@@ -17,10 +17,9 @@ small records live on the 16 MiB flash. This directory holds:
 
 The launcher side lives in [../ui/src/apps.rs](../ui/src/apps.rs).
 
-Status, 13 Nov 2026: everything below runs on the dongle in the RAM-booted perf build. The
-flashed firmware does not have it yet. Since 14 Nov the store is a static site on Cloudflare
-(<https://store.example.org>, [../cloud/store](../cloud/store/README.md)) reached
-over HTTPS; the local `serve.py` is gone.
+Everything below runs on the first board. The store is a static site
+(<https://store.example.org> stands for yours, [../cloud/store](../cloud/store/README.md)) reached
+over HTTPS.
 
 ## The pieces
 
@@ -387,7 +386,7 @@ Checked on 15 Nov 2026:
 | Unit tests | 10 in `meow-image` (against libwebp's output, limits, about 8000 cut and damaged files), 5 in `meow_app::image` (the connection, answers out of bounds, no service), 3 in `meow_media::image`, 5 for sweet.tv's logos, with and without the service's program |
 | On the dongle, by hand (`/opt`, the flashed firmware's appd and network service, the service's program as `MEOW_IMAGE_HELPER`): `sweettv logos` with the owner's account | **217 of 217 channels have a logo** (207 JPEG and 10 PNG answers, all from the first address); 506 KB fetched in 15.4 s (71 ms a logo); decoded and scaled in 1.1 s, 5.2 ms a logo with the round trip to the service, the slowest 19 ms |
 | The same binary's decoder on the dongle (`meow-image FILE --times 10`) | JPEG 96x96: 1.4 ms. WebP 300x300: lossy 30 ms, lossy with alpha 44-53 ms, lossless 8-17 ms; made to fit 96x96: 42-64 ms. A WebP original fetched and shown by `sweettv logo`: 70 ms |
-| On the flashed firmware, which has no image service (`sweettv logos 30`) | The request is refused once (`ERR unknown command`), then the website's PNG is asked for first: 29 of 30 logos, as before this work |
+| On the flashed firmware, which has no image service (`sweettv logos 30`) | The request is refused once (`ERR unknown command`), then the website's PNG is asked for first: 29 of 30 logos |
 | **On the dongle: appd fetching and starting the service at an app's first `IMAGE` request, the service in its sandbox (memory, leaving after 60 s, coming back, a kill), the app's broker path** | **Not run**: it needs the new appd, and trying it without a flash went wrong (below). To be checked after the firmware with this appd is flashed and the package is published |
 
 A pitfall met on the way: the usual trick for trying a new appd (stop it, copy `/data` to a
@@ -600,7 +599,7 @@ Flash wear is bounded by design:
 
 The flash tools keep `/data`: `boards/rk3228a-dongle/flash/flash_nor.py` writes only up to 0xc00000 by default,
 and `pack-flash.py` refuses a kernel that reaches it. See
-[../boards/rk3228a-dongle/flash/README.md](../boards/rk3228a-dongle/flash/README.md#data-partition-13-nov-apps-work).
+[../boards/rk3228a-dongle/flash/README.md](../boards/rk3228a-dongle/flash/README.md#data-partition-apps-work).
 
 ## Trust and the store
 
@@ -836,10 +835,8 @@ app). The inspector saves a half-size screenshot with `appctl key shot`; read it
 
 ## Known limits and next steps
 
-- **Not flashed yet.** The flashed firmware (d16ebc1d34a3) has no SPI/MTD, appd or the app
-  launcher. Flashing this build keeps `/data` (see Flash usage).
-- **zImage headroom is about 2.8 MiB** below the data partition since the kernel and the
-  initramfs are XZ-compressed (14 Nov, [../boards/rk3228a-dongle/kernel/kernel.config](../boards/rk3228a-dongle/kernel/kernel.config)).
+- **zImage headroom is about 2.8 MiB** below the data partition with the kernel and the
+  initramfs XZ-compressed ([../boards/rk3228a-dongle/kernel/kernel.config](../boards/rk3228a-dongle/kernel/kernel.config)).
 - **One foreground app,** plus the small background services. A foreground request always
   wins over the app in front; there is no "ask first" and no focus model for several apps.
   - CPU is weighted, not capped (`cpu.max`).

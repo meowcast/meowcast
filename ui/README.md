@@ -1,10 +1,9 @@
 # miracast-ui: custom GLES2 launcher for the RK3228A dongle
 
-A Plasma-Bigscreen-style 10-foot home screen with its own Rust renderer for Mali-400 (Lima, OpenGL ES 2.0).
-It replaces the Slint spike, an earlier experiment that is not part of this repository. That spike was GPU-bound
-at 6.7 fps because FemtoVG's shaders cost 27–55 Lima instructions per pixel.
+A 10-foot home screen in the style of [Plasma Bigscreen](https://plasma-bigscreen.org/), with its own Rust
+renderer for Mali-400 (Lima, OpenGL ES 2.0). Screenshots: [../docs/SHOWCASE.md](../docs/SHOWCASE.md).
 
-All measurements and analysis from the bring-up session are in [PERF-FINDINGS.md](PERF-FINDINGS.md).
+Measurements and analysis are in [PERF-FINDINGS.md](PERF-FINDINGS.md).
 
 The principle: **do expensive visual work once, then let the GPU only copy texels, and only where something
 changed.**
@@ -105,7 +104,7 @@ Up and Down move. Right or Enter goes into a category and activates a row. Left 
 | Developer | **Network debugging** (Dropbear SSH, keys enrolled with the TV's code via `tools/meowdbg.py pair`) · **Performance overlay** (once a second: fps, % late, GPU MHz, CPU %, °C) · **Restart the launcher** |
 | About | Processor, GPU clock, memory, `/data` space, temperature, kernel, uptime (resampled every 2 s while shown) · **Factory reset** (a dialog that starts on Cancel, then "Erasing…" while `/bin/factory-reset` erases `/data` and restarts the launcher) |
 
-**The button on the dongle** ([src/reset.rs](src/reset.rs), `Input::Button` in [src/input.rs](src/input.rs)). `meow-buttond` reports its steps as the bytes `1`–`6` on the key FIFO; the launcher draws them and decides nothing: a short press shows or hides the pairing screen (an app in front goes Home first, a sleeping screen wakes), a hold shows the factory-reset warning with its countdown, then "let go now", then "Erasing…". The remote's keys do nothing while those screens are up. The pairing screen asked for this way stays until one more phone is paired, also while another phone is connected. Rules and reasons: [../os/README.md](../os/README.md#the-button-pair-a-phone-factory-reset-15-nov).
+**The button on the dongle** ([src/reset.rs](src/reset.rs), `Input::Button` in [src/input.rs](src/input.rs)). `meow-buttond` reports its steps as the bytes `1`–`6` on the key FIFO; the launcher draws them and decides nothing: a short press shows or hides the pairing screen (an app in front goes Home first, a sleeping screen wakes), a hold shows the factory-reset warning with its countdown, then "let go now", then "Erasing…". The remote's keys do nothing while those screens are up. The pairing screen asked for this way stays until one more phone is paired, also while another phone is connected. Rules and reasons: [../os/README.md](../os/README.md#the-button-pair-a-phone-factory-reset).
 
 **Resolution change.** Settings are saved with `confirm=<previous output>`, the screen fades to black, the
 console is blanked (no text flash) and the UI exits with code 3. `ui-session` (and `run.sh`) start it again
@@ -122,7 +121,7 @@ Sleep (the top bar's Power button, or by itself 10 minutes after the idle dim, `
 black and then **switches the video output off** (`Kms::set_output`, the connector's DPMS property): the
 CRTC goes inactive, the VOP stops and runtime-suspends, the HDMI PHY and its PLL power down, and the TV
 reports "no signal". An output that is on is most of this board's idle heat: the home screen idles 10–12 °C
-above the sleeping board (measured 15 Nov, [../os/README.md](../os/README.md#where-the-display-heat-comes-from-15-nov)).
+above the sleeping board (measured 15 Nov, [../os/README.md](../os/README.md#where-the-display-heat-comes-from)).
 Mode, planes and framebuffers stay as they are. Nothing is drawn while the output is off (the loop keeps
 `need_build` for the wake-up frame and sleeps in `poll`).
 
@@ -161,7 +160,7 @@ key every 220 ms (continuous animation):
   asset wallpaper is processed first. 4K never drew a frame. Either wallpaper now counts.
 
 **Heat (15 Nov).** The launcher reads `/run/thermal/state` (meow-thermald,
-[../os/README.md](../os/README.md#thermal-protection-15-nov)) with the network state, every 700 ms:
+[../os/README.md](../os/README.md#thermal-protection)) with the network state, every 700 ms:
 - A new `notice_seq` shows its `notice` as the normal notice pill ("Too hot: pausing for a minute to cool
   down", "Cooled down: back to normal") and wakes a dimmed or sleeping screen. While an app has the screen
   the notice waits; the daemon closes the app first. Log: `UI_HEAT notice …`.
@@ -231,7 +230,7 @@ coverage.
   `SHA256SUMS`). `package-ui.py` ships the subsets; `../apps/build-apps.sh` puts the full faces
   in the store.
 
-## Text that fits, lists that clip (15 Nov)
+## Text that fits, lists that clip
 
 Text is drawn at a position, with no box, so every string that is not a fixed short label has to be
 given its room. Three shared pieces do that:
@@ -253,8 +252,7 @@ given its room. Three shared pieces do that:
   panel's width; only beyond that do they get an ellipsis), measured once when it opens
   (`PickLayout`). It opens below the panel's heading, the panel behind it dims, its options are
   clipped to the list's window, and a list longer than 8 options shows a scroll thumb.
-- **Scrolling rows and the wallpaper grid** are clipped to their window (they used to fade only,
-  and a half-faded row was drawn over the heading). A page longer than the panel shows a thumb.
+- **Scrolling rows and the wallpaper grid** are clipped to their window. A page longer than the panel shows a thumb.
 
 Unit tests: `text::tests` (with the firmware's fonts) and `home::tests::clip_…`.
 
@@ -301,8 +299,8 @@ the image is clearly visible, dimmed, slightly soft, and darker behind the cards
   the scroll lands, so the moving frames draw one layer: 4–12 % late frames.
 - **Fix now in use: display planes** (next section). The dissolve runs *with* the scroll at 0.2–1.4 %
   late frames.
-- **Input boost:** the transition boost (CPU/GPU minimum clock to maximum) now also runs while the
-  home screen animates. Scrolls no longer start at the 200 MHz idle GPU clock. It is restored when idle.
+- **Input boost:** the transition boost (CPU/GPU minimum clock to maximum) also runs while the
+  home screen animates, so scrolls do not start at the 200 MHz idle GPU clock. It is restored when idle.
 - **Memory:** GPU textures add about 2.5 MiB (the procedural 2 MiB texture is freed after the fade).
 
 ### Wallpaper gallery (Settings > Wallpaper)
@@ -479,7 +477,7 @@ with a 10-dot spinner. Each spinner frame repaints only the spinner's own box.
 **Dev knobs:** `UI_LAUNCH_TRACE=1` logs every transition frame. `UI_LAUNCH phase=…` lines give
 per-phase frame counts.
 
-## Memory (15 Nov)
+## Memory
 
 Measured on the dongle at 1080p60 with planes (256 MB board, `MemTotal` 243.8 MB). With the UI stopped
 170 MB is available; the home screen leaves 118 MB. What the UI holds:

@@ -12,7 +12,7 @@ and its only way onto a network is Wi-Fi. This directory adds:
 - **The pilot server** (`meow-netd`), with Wi-Fi setup and pairing from the phone.
 - **The network debug bridge**: Dropbear SSH, switched on in Settings › Developer.
 
-## The hardware (found 14 Nov 2026)
+## The hardware
 
 | Fact | Evidence |
 |---|---|
@@ -35,7 +35,7 @@ ported to 7.1 and verified on an RK3506B (also Cortex-A7). It is cloned in `vend
 | `kernel-wifi.sh` | Called by `../os/build.sh` when `WIFI=1`. Copies the driver into the kernel tree, wires Kconfig/Makefile and adds the config: dwc2 dual role, role switch, NETDEVICES, cfg80211, `RTL8733BU=y`. |
 | `patch-driver.sh` | Our edits to the in-kernel copy, each asserted. Linux 7.3 API: `strncpy` removed, `WIPHY_FLAG_SUPPORTS_5_10_MHZ` gone, cfg80211 now passes the remain-on-channel/mgmt-tx cookie in. Size: `-Os`, log level warnings, no WoWLAN/monitor (that drops 250 KiB of WoWLAN firmware). `CONFIG_MP_INCLUDED` has to stay. |
 | `build-userspace.sh` | Offline cross-build into `../os/deploy/wifi/bin`: `wpa_supplicant` + `wpa_cli` (2.12, static libnl 3.12, internal crypto, AP mode) and `dropbear` (2026.94, server only). Sources are pinned in `../os/fetch-sources.sh` (`WIFI=1`). |
-| `wpa_supplicant.config`, `dropbear-localoptions.h` | Their build options. P2P, WPS and Wi-Fi Display are on in the supplicant's since 14 Nov evening ([Miracast](#miracast-wi-fi-direct)): `deploy/wifi/bin` has to be rebuilt with `build-userspace.sh` to get them. |
+| `wpa_supplicant.config`, `dropbear-localoptions.h` | Their build options. P2P, WPS and Wi-Fi Display are on in the supplicant's ([Miracast](#miracast-wi-fi-direct)). |
 | `../apps/netd/src/p2p.rs` | Miracast's Wi-Fi Direct side. |
 | `../os/rootfs/usb-role` | Chooses the port role at boot. |
 | `../os/rootfs/netd-session` | Supervises `meow-netd`. |
@@ -254,7 +254,7 @@ and reads netd's state from `/run/netd/miracast`. `apps/netd/src/p2p.rs` does th
   back into station mode, kill DHCP, flush `wlan1`'s addresses.
 - If the station was connected and stays disconnected for 20 s while Wi-Fi Direct is on,
   Wi-Fi Direct stops for 5 minutes ("the Wi-Fi connection was lost while it was on").
-- A supplicant without P2P (the build before 14 Nov evening) is recognised by its binary
+- A supplicant built without P2P is recognised by its binary
   (no `p2p_no_group_iface` string): then nothing above is passed to it and the app shows
   "Unavailable: this firmware has no Wi-Fi Direct support".
 - Failures to start are shown as "Unavailable: ..." and tried again after 30 s.
@@ -292,7 +292,7 @@ with the P2P supplicant, or push it: `meowdbg push <wpa_supplicant> /opt/wpa_sup
   `echo pair-open > /run/netd/ctl`, then use `pair_code` from `/run/netd/state`.
 - The Mac relay (`remote/server.mjs`) still works as before.
 
-## Test status (14 Nov 2026)
+## Test status
 
 Verified on the dongle over USB (RAM boot, then from flash, image `firmware-d7f811249d24`):
 

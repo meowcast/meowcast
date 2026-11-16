@@ -70,10 +70,8 @@ The relay does not look inside `msg` and `pilot`, so new pilot features need no 
 Wrapping keeps a phone from forging the relay's own messages (`hello`, `pair`, `tunnel-open`).
 Messages are limited to 4096 bytes from a phone and 16 384 from the dongle.
 
-**Compatibility.** A dongle with firmware from before pilot protocol 2 ignores `msg` and `bye`
-and never sends `pilot`; the pilot app then gets no `state` and shows the keys only. A pilot from
-before it sends only `key`. Deploy the relay first, then the pilot app; the firmware can follow
-at any time.
+**Order of deployment.** When the protocol grows, deploy the relay first, then the pilot app; the
+firmware can follow at any time (each side ignores messages it does not know).
 
 HTTP: `GET /api/info?device=ID` → `{online, dongle}`; `POST /api/pair {device, code, name}` →
 `{ok, token}`, or 403 `bad_code`/`not_open`/`locked`, or 503 `offline`.
@@ -88,8 +86,7 @@ HTTP: `GET /api/info?device=ID` → `{online, dongle}`; `POST /api/pair {device,
 - `/run/netd/state` says `cloud=off|waiting|connecting|online`. While online, the TV's pairing QR
   is `<app>/?d=<id>&pair=<code>`. Otherwise it is the dongle's LAN address.
 - The dongle's own web page (`pilot/setup/index.html`, 3.8 KB gzipped) is the captive-portal
-  Wi-Fi setup and a link to the cloud pilot. The full React app is no longer in the firmware,
-  which saved about 90 KB.
+  Wi-Fi setup and a link to the cloud pilot. The full React app is not in the firmware.
 
 ## Tests
 

@@ -1,7 +1,6 @@
 # UI performance findings (2026-11-11 session)
 
 This covers what was measured and built while turning the RK3228A dongle into a 10-foot launcher:
-- the Slint spike;
 - the custom GLES2 renderer;
 - a Lima driver patch;
 - the memory-bandwidth and thermal analysis;
@@ -12,9 +11,8 @@ How-to material lives elsewhere:
 | Topic | Where |
 |---|---|
 | Renderer architecture and usage | [README.md](README.md) |
-| Slint spike details | not published (an abandoned experiment) |
 | Phone remote | [../cloud/pilot/README.md](../cloud/pilot/README.md) |
-| Earlier GPU/DDR/clock work | [../boards/rk3228a-dongle/docs/PERF-RESULTS.md](../boards/rk3228a-dongle/docs/PERF-RESULTS.md) |
+| GPU/DDR/clock work | [../boards/rk3228a-dongle/docs/PERF-RESULTS.md](../boards/rk3228a-dongle/docs/PERF-RESULTS.md) |
 
 **Test setup:**
 - Test TV P275MV PLUS; `perf` kernel; DDR3 at 600 MHz; GPU devfreq 200/300/400 MHz; CPU 408/600/816 MHz.
@@ -25,14 +23,14 @@ How-to material lives elsewhere:
 
 ## 1. Summary
 
-| | Slint 1.18 + FemtoVG | Custom renderer |
-|---|---|---|
-| 1080p60 navigation | 6.7 fps | **60 fps** (16.7–17.1 ms frames, 0–2 % late) |
-| 4k30 navigation | 1.8 fps (full scene) | 27–30 fps for row moves (RGB565); about 20 fps for vertical scrolls |
-| Idle | 0 fps, GPU at 200 MHz | 0 fps, 0 % CPU, GPU at 200 MHz |
-| First frame, 1080p / 4K | 0.77 s / 0.87 s | 1.45 s / 2.9 s |
-| RSS | 20–21 MiB | 15–16 MiB |
-| Binary (stripped) | 7.3 MB | 1.0 MB |
+| | Measured |
+|---|---|
+| 1080p60 navigation | **60 fps** (16.7–17.1 ms frames, 0–2 % late) |
+| 4k30 navigation | 27–30 fps for row moves (RGB565); about 20 fps for vertical scrolls |
+| Idle | 0 fps, 0 % CPU, GPU at 200 MHz |
+| First frame, 1080p / 4K | 1.45 s / 2.9 s |
+| RSS | 15–16 MiB |
+| Binary (stripped) | 1.0 MB |
 
 **Three findings mattered most:**
 1. **Mali-400 is per-pixel-instruction bound.** A generic vector renderer's fragment shaders are 5–10× over
@@ -56,9 +54,9 @@ that is 0.8 G instruction-pixels per second. Per screen pixel per frame, that gi
 **Validation:** a 55-instruction full-screen gradient at 1080p was predicted at
 2.07 Mpx × 55 / 0.8 G ≈ 140 ms, and measured at 5.5 fps.
 
-**Shader sizes.** FemtoVG's fragment shader variants compiled to 55 instructions (gradient), 36 (image/text),
-27 (solid colour with edge AA) and 1 (stencil). They do scissor matrices, `sdroundrect`/`length()` and a dither
-hash on every pixel. The custom renderer's single shader, `texture2D(tex, v_uv) * v_col` with the coordinate
+**Shader sizes.** The fragment shaders of a general vector renderer (FemtoVG was measured) compile to 55
+instructions (gradient), 36 (image/text) and 27 (solid colour with edge AA): scissor matrices,
+`sdroundrect`/`length()` and a dither hash on every pixel. This renderer's single shader, `texture2D(tex, v_uv) * v_col` with the coordinate
 used straight from the varying, costs about 2.
 
 **How to measure:** `LIMA_DEBUG=shaderdb MESA_SHADER_CACHE_DISABLE=true` prints `SHADER-DB: … N inst`. The
@@ -77,28 +75,6 @@ count are what matter.
   redraw.
 - The `LIMA_PLB_PP_STREAM_CACHE_SIZE=4194304` setting from the handoff is still required. Varying damage
   rectangles create new PP streams; 32 px-aligned rectangles improve cache reuse.
-
-## 3. Slint spike: rejected
-
-**What worked:**
-- Slint 1.18.1 `linuxkms` + FemtoVG ran on Lima with no libinput, libseat or udev (feature
-  `backend-linuxkms` without `-libinput`).
-- With fontique's `fontconfig-dlopen` feature it ran without fontconfig, using `SLINT_DEFAULT_FONT`.
-
-**Full-redraw fps per scene part** (`UI_SCENE` bitmask):
-
-| Scene | 1080p60 | 4k30 |
-|---|---:|---:|
-| Empty (clear + 6 px dot) | 50 | 15 |
-| Full-screen 2-stop gradient | **5.5** | – |
-| Header text | 35 | – |
-| Card shapes | 30 | 10 |
-| Everything | 5.0 | 1.8 |
-
-The UI used 8 % CPU with the CPU at 408 MHz, so it was GPU-bound. Slint also redraws the whole window every
-frame and doesn't pipeline page flips; even the empty scene missed vblanks.
-
-**Verdict:** no-go. Patching FemtoVG's shaders wouldn't fix the full-window redraws or the 4K budget.
 
 ## 4. Custom renderer
 
@@ -129,7 +105,6 @@ Architecture is in [README.md](README.md). In short:
 
 | Step | Effect |
 |---|---|
-| Custom renderer instead of Slint, 1080p | 6.7 → 30–49 fps on the first run |
 | `glClear` before full frames (no reload) | Full-redraw frames about 22 → 14 ms |
 | Skipping the shadow 9-slice centre (hidden under the opaque card) | Saves one card-area fill per card |
 | Lima scissored-clear patch (§5) | Partial frames −30 to −35 %; 1080p navigation reached 16.7 ms with 0–2 % late |

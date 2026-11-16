@@ -56,7 +56,7 @@ The launcher and apps use standard Linux interfaces, so most of a port is the ke
 | `/data` | A device tree partition named `data` (JFFS2 on NOR here). Without it `/data` is a RAM disk and nothing survives a reboot |
 | Wi-Fi | A cfg80211 driver. `wifi/kernel-wifi.sh` adds the RTL8733BU vendor driver; another chip needs its own script or an in-tree driver in `kernel.config` |
 | USB console and network | A USB device controller (the image is a CDC ACM + ECM gadget) |
-| Thermal protection | A thermal zone, cpufreq, and devfreq for the GPU ([os/README.md](../os/README.md#thermal-protection-15-nov)) |
+| Thermal protection | A thermal zone, cpufreq, and devfreq for the GPU ([os/README.md](../os/README.md#thermal-protection)) |
 | Button | A GPIO line the button daemon can read (`os/buttond.c`) |
 | Memory | The defaults assume 256 MiB (`APPS_MEMORY_MAX` in `apps/appd/src/daemon.rs`, zram in `os/rootfs/init`) |
 

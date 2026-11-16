@@ -3,6 +3,14 @@
 Open firmware for cheap HDMI "cast" dongles: a small Linux system with a TV launcher, sandboxed
 apps and a phone remote, replacing the stock firmware of the stick.
 
+![The home screen: a row of recent apps over a wallpaper](docs/screenshots/home.jpg)
+
+| | | |
+| --- | --- | --- |
+| ![Choosing a wallpaper in Settings](docs/screenshots/settings-wallpaper.jpg) | ![Pairing a phone as the remote with a QR code](docs/screenshots/pairing.jpg) | ![The Store app's list of apps](apps/store/shots/browse.png) |
+
+More screens (settings, permissions, the Store) are in the [showcase](docs/SHOWCASE.md).
+
 It boots in a few seconds from 16 MiB of flash, runs in 256 MiB of RAM, draws its interface
 with the GPU at 60 fps, and loads its apps over the network into RAM. You build it yourself,
 flash it yourself, and run the small cloud side (app store, phone relay) on your own
@@ -55,6 +63,7 @@ the phone remote only works on networks where the phone can reach the device dir
 
 ## Documentation
 
+- [Showcase](docs/SHOWCASE.md): what it looks like
 - [Building](docs/BUILDING.md): the build steps, what each produces, tests
 - [Configuration](docs/CONFIGURATION.md): every `config.env` value
 - [Your cloud side](docs/CLOUD.md): deploying the store, relay and phone remote
@@ -66,6 +75,15 @@ the phone remote only works on networks where the phone can reach the device dir
 
 Much of the component documentation is an engineering log: it records what was measured on
 the first board and when. Dates in it are 2026.
+
+## Design credits
+
+The launcher's look follows [Plasma Bigscreen](https://plasma-bigscreen.org/), KDE's
+interface for TVs: the rows of cards, the top bar and the settings layout are modelled on
+it. The code is written from scratch for this hardware and shares none with it. The
+wallpapers are a selection of [KDE Plasma's wallpapers](https://github.com/KDE/plasma-workspace-wallpapers),
+used under their licences with their authors credited on the device and in
+[CREDITS.txt](cloud/store/www/assets/wallpapers/CREDITS.txt). meowcast is not a KDE project.
 
 ## Contributing
 

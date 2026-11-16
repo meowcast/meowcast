@@ -8,8 +8,8 @@ RUN dpkg --add-architecture armhf && apt-get update && apt-get install -y --no-i
 RUN python3 -m venv --system-site-packages /opt/mesa-tools && \
     /opt/mesa-tools/bin/pip install --no-cache-dir meson==1.9.1
 ENV PATH="/opt/mesa-tools/bin:${PATH}"
-# UI (ui/): Rust cross toolchain plus the armhf libraries that Slint's
-# linuxkms backend links (libinput/udev/xkbcommon for input, fontconfig for fonts).
+# UI and apps: the Rust cross toolchain. (The armhf input and font libraries below are not
+# linked by anything in the tree any more; they stay so that the image does not change.)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libinput-dev:armhf libudev-dev:armhf libxkbcommon-dev:armhf \
     libfontconfig-dev:armhf libfreetype-dev:armhf && rm -rf /var/lib/apt/lists/*

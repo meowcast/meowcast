@@ -44,7 +44,7 @@ not a hermetic snapshot (`output/builder-packages.txt` records them).
 `smoke-test.py` boots the image in QEMU (`virt` machine): kernel, init and shell only, since
 QEMU does not emulate a board's peripherals.
 
-## Image size: XZ (14 Nov)
+## Image size: XZ
 
 The zImage must end below the data partition (0xc00000 in the flash layout: 11 729 920 bytes
 for the kernel slot), so size is the scarce resource and boot time is not.
@@ -68,7 +68,7 @@ for the kernel slot), so size is the scarce resource and boot time is not.
 | XZ kernel + XZ initramfs | 8 753 248 | 2.98 MB |
 
 Booted from RAM on the dongle on 14 Nov: `/init` starts 4.6 s into the kernel's clock, and the
-shell answers 15.3 s after the hand-off. The difference from the earlier build was not measured.
+shell answers 15.3 s after the hand-off.
 
 ## USB networking and deploy loop
 
@@ -103,7 +103,7 @@ fetch my-binary                  # dongle: -> /opt/my-binary, prints FETCH_OK si
 `/opt` is a 96 MiB tmpfs that only uses RAM for what is stored. Measured: 16 MiB in about 2.4 s,
 SHA-256 included. Nothing listens on the dongle; `ntpd` runs without `-l`.
 
-## Apps and /data at boot (13 Nov)
+## Apps and /data at boot
 
 The perf kernel mounts the SPI-NOR data partition (0xc00000–0xfe0000, JFFS2) at `/data` and cgroup v2
 at `/sys/fs/cgroup`. It then starts the app manager with `appd-session`; logs go to `/run/appd.log`.
@@ -179,7 +179,7 @@ python3 lab.py cycle --dtb output/variants/synctest.dtb
 **Mesa:** [patches/mesa-rand-no-boot-stall.patch](patches/mesa-rand-no-boot-stall.patch) stops Mesa from
 stalling about 8 s in `gbm_create_device` before the kernel RNG is ready.
 
-## Thermal protection (15 Nov)
+## Thermal protection
 
 The dongle has no heat sink and its display pipeline alone keeps it near 100 °C. Three layers,
 from mild to drastic:
@@ -193,10 +193,9 @@ from mild to drastic:
 | TSADC hardware reset | DTS | 120 °C | CRU reset without software (the stock firmware's value; was 115 °C) |
 
 Why these numbers: the SoC's sensor table and rating end at 125 °C and the stock firmware reset at
-120 °C. The old 110 °C critical trip left no room for anything between "throttled as far as the
-kernel can" (the device idles at 99–103 °C with HDMI on) and a reboot. The cooldown starts at
-108 °C, below the old trip, so the device never runs hotter than it used to; the kernel trips above
-it only moved up to stay out of its way (the daemon itself gives up at 113 °C).
+120 °C. The device idles at 99–103 °C with HDMI on, "throttled as far as the kernel can", so the
+cooldown needs room between that and a reboot: it starts at 108 °C, and the kernel trips sit
+above it to stay out of its way (the daemon itself gives up at 113 °C).
 
 ### The emergency cooldown
 
@@ -250,7 +249,7 @@ status`: clocks, runtime-PM states, CRTC). Emergencies also go to `/data/thermal
 16 KiB, three or four lines per event), so they survive the reboot. `/run/thermal/state` is the
 live state (`state`, `level`, `temp`, `round`, `notice_seq`, `notice`).
 
-### Measured (15 Nov, flashed firmware, 1080p60, USB cable to the Mac)
+### Measured (flashed firmware, 1080p60, USB cable to the Mac)
 
 | | °C |
 | --- | --- |
@@ -274,14 +273,14 @@ bridge stayed up throughout.
 
 **Idle-power findings.** (1) rkvdec never gated its clocks (`aclk_rkvdec` 192 MHz, `hclk_rkvdec`,
 `sclk_vdec_core`/`cabac` 300 MHz enabled with the decoder suspended): fixed in `build.sh`, effect
-not measured. (2) The display pipeline is the idle heat; since 15 Nov evening the launcher's sleep
-switches the output off, see [the next section](#where-the-display-heat-comes-from-15-nov). (3) The
+not measured. (2) The display pipeline is the idle heat; the launcher's sleep
+switches the output off, see [the next section](#where-the-display-heat-comes-from). (3) The
 launcher renders nothing when idle but wakes every 700 ms to read state files (CPU 98.5 % idle;
 fine). (4) Load average sits at 1.1 with idle CPUs: a kernel thread in uninterruptible sleep, not
 load. (5) The unused clocks are gated at boot now (`clk-gate-unused`), and the VOP AXI clock was
 measured again at 1080p60: no gain (next section).
 
-### Where the display heat comes from (15 Nov)
+### Where the display heat comes from
 
 Measured on the flashed firmware (`80feb9ac25a2`), 1080p60, idle home screen, over the debug bridge.
 Method: one thing switched back and forth (A, B, A, B) in phases of 90–150 s, mean of the last 30 s
@@ -322,8 +321,7 @@ Applied (15 Nov evening, flashed as `firmware-4745a1b477b9`, see [../boards/rk32
 
 1. **Sleep switches the output off** ([../ui/README.md](../ui/README.md), "Dimming and sleep"), by
    the Power button or 10 minutes after the idle dim.
-2. **vdd_logic 1.10 V on flash boots too** (`pack-flash.py` no longer raises the DTB's value to
-   1.15 V; that dated from the belief that flash boots run DDR3 at 600 MHz).
+2. **vdd_logic 1.10 V** on RAM and flash boots alike.
 3. **`clk-gate-unused`** ([rootfs/clk-gate-unused](../boards/rk3228a-dongle/rootfs/clk-gate-unused)) at boot: Ethernet,
    crypto, SD/eMMC/NAND, TSP, RGA, IEP, HDCP, VPU bus clocks, S/PDIF, I2S1/2, unused USB hosts,
    UARTs, I2C, SIM, eFuse. A named list through the clk debugfs, because booting without
@@ -363,7 +361,7 @@ tail -f /run/thermal/log; thermald-session status; thermal-actions status
 python3 test-thermald.py                 # host: the state machine against a fake sensor (13 cases)
 ```
 
-## The button: pair a phone, factory reset (15 Nov)
+## The button: pair a phone, factory reset
 
 The dongle has one button (GPIO3_D1, active low). Held at power-on it is the stock loader's way
 into MaskROM, which is unchanged. Once Linux runs, `meow-buttond` ([buttond.c](buttond.c), started

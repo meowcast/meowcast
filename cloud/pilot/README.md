@@ -3,7 +3,7 @@
 A small React app that turns a phone into a remote for the dongle's launcher (`ui`). It
 runs in two ways:
 
-- **Served by the dongle** (since 14 Nov). `meow-netd` serves it on port 80 (from the initramfs,
+- **Served by the dongle.** `meow-netd` serves it on port 80 (from the initramfs,
   `/usr/share/pilot`), handles Wi-Fi setup and pairing, and sends the keys to the UI. On the TV's
   setup network it opens as a captive portal and shows the Wi-Fi setup: choose a network, then the
   password. On the home network it asks for the TV's pairing code (or takes it from the QR link

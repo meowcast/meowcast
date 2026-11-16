@@ -14,13 +14,13 @@ compiled in, and `flash_nor.py` refuses images that differ from the stock dump o
 |---|---|
 | `stage_spi_write.c` | MaskROM-helper callback: makes flash[start,start+len) equal to DRAM 0x64000000+offset. Bus commands 0x9f/0x05/0x03, plus 0x06/0x20/0x02/0x04 only in WRITE mode. Checks the DRAM CRC first, skips equal sectors, reads back every written sector, then checks the final flash CRC. |
 | `flash_nor.py` | Host driver: dry run by default, `--write` to program. Evidence in `runs/<timestamp>/`. |
-| `pack-flash.py` | Builds the 16 MiB target image: stock dump + trust slot (`flash_entry.bin` + DTB, vdd_logic 1.10 V as on RAM boots; 1.15 V in images packed before 15 Nov evening) + kernel slot (KERNEL header + zImage). |
+| `pack-flash.py` | Builds the 16 MiB target image: stock dump + trust slot (`flash_entry.bin` + DTB, vdd_logic 1.10 V as on RAM boots) + kernel slot (KERNEL header + zImage). |
 | `rehearse.py` | RAM rehearsal of the flashed boot with the stock DDR init (`load-helper`, `boot`). |
 | `make-stock-ddr-loader.py` | nopad RAM loader with CODE471 = stock DDR V1.07 (600 MHz). |
 | `build.sh` | Builds the stage, `norflash_memory` (derived from `../rockusb/rockusb_memory.cpp`), and the flash entries (`boards/rk3228a-dongle/boot/linux_entry.S` with `-DFLASH_ENTRY`). |
 | `fdt_edit.py` | Same-size DTB property edits without dtc. |
 
-## Data partition (13 Nov, apps work)
+## Data partition (apps work)
 
 Linux (perf kernel with SPI/MTD/JFFS2) mounts **0xc00000-0xfe0000 as /data** (JFFS2, 62 x 64 KiB
 erase blocks): app manifests, permission grants and app storage written by appd
@@ -33,7 +33,7 @@ partitioned master; `ramboot.py verify` checks the DTB). Consequences here:
 - A full-chip read after a flash differs from the image in 0xc00000-0xfe0000 once Linux has
   written /data; compare [0, 0xc00000) and [0xfe0000, end) instead.
 
-## Flash speed (13 Nov, second version of the stage)
+## Flash speed (second version of the stage)
 
 The first flashes took ~7.5 min for [0x050000, 0xfe0000): 457 s, of which the USB upload was 1 s and
 455 s were inside the stage. That time was 3984 x 4 KiB sector erases (~45 ms each), three read
@@ -60,7 +60,7 @@ apps and grants intact; software reboot -> MaskROM still works.
 `boards/rk3228a-dongle/rockusb/tools/rkdeveloptool/rkdeveloptool rd`. From bare MaskROM, load the helper first
 (`rockusb_ram_loader.py --no-ram-padding`), then `rd`.
 
-## DDR reclock in the flash entry (13 Nov)
+## DDR reclock in the flash entry
 
 **Why:** the stock IDBlock DDR init (kept; NOR below 0x50000 is never written) leaves DDR3 at
 300 MHz in DLL-off mode.
@@ -79,10 +79,9 @@ configuration through self-refresh, keeping the DRAM contents.
 
 ## Boot chain once flashed
 
-**DDR default (since 13 Nov evening): DDR3 528 MHz. vdd_logic: 1.15 V in every image flashed so far;
-1.10 V in images packed from 15 Nov evening on (−1.7 °C at idle, [../../../os/README.md](../../../os/README.md#where-the-display-heat-comes-from-15-nov)).**
-- **How it gets there:** the stock DDR init in the kept IDBlock leaves **300 MHz** (DLL-off mode).
-  Earlier notes said 600, because `dpll_ddr` reads 600 MHz in both states. Our flash entry then
+**DDR3 runs at 528 MHz and vdd_logic at 1.10 V.**
+- **How it gets there:** the stock DDR init in the kept IDBlock leaves **300 MHz** (DLL-off mode;
+  `dpll_ddr` reads 600 MHz in both states). Our flash entry then
   reclocks to 528 MHz (see "DDR reclock in the flash entry" above).
 - **Margin:** 528 MHz was memtest-clean down to vdd_logic 1.05 V on 12 Nov (RAM boot), and 1.10 V is
   what every RAM boot of the perf profile has run since then.

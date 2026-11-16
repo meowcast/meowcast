@@ -5,8 +5,7 @@ Everything the dongle downloads comes from one static site on Cloudflare:
 **<https://store.example.org>** (a static-assets Worker, `wrangler.jsonc`).
 
 It serves apps, the wallpapers (with the gallery Settings shows) and the full fonts. The firmware keeps only what it needs to work
-offline; the rest comes from here over HTTPS. No local server is needed any more: `serve.py` on
-the Mac is gone.
+offline; the rest comes from here over HTTPS.
 
 ```sh
 # in the builder: pack + sign the apps, copy the full fonts, sign the asset index
@@ -99,8 +98,7 @@ Internet Sharing):
   `../../ui/shots/assets-offline2-{0,1}.png`.
 - **Full font:** `fonts/NotoSans-Regular.ttf` (512 KB) arrived in 405 ms (`appd ctl asset`).
 
-Nothing is written to flash for assets. Earlier firmware cached them in `/data/assets`, which
-appd now deletes at start.
+Nothing is written to flash for assets.
 
 ## Development store
 
@@ -138,5 +136,5 @@ python3 -I cloud/store/prepare-wallpapers.py   # macOS (sips); then build-apps.s
 - **On the dongle:** the launcher darkens and blurs the picture (`ui/src/wall.rs`), so light
   wallpapers work under the white text too. The thumbnails show them as they are.
 - **Why 960×540:** the launcher's sharp layer is half the output resolution (it is upscaled by
-  the GPU/VOP at 1080p and 4K alike). The earlier 1920×1080 file was 2.75× larger and took
+  the GPU/VOP at 1080p and 4K alike). A 1920×1080 file would be 2.75× larger and take
   4× the decode work, just to be averaged down.
