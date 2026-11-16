@@ -1,6 +1,6 @@
 # meowcast
 
-Open firmware for cheap HDMI "cast" dongles: a small Linux system with a TV launcher, sandboxed
+Open, fully vibecoded firmware for cheap HDMI "cast" dongles: a small Linux system with a TV launcher, sandboxed
 apps and a phone remote, replacing the stock firmware of the stick.
 
 ![The home screen: a row of recent apps over a wallpaper](docs/screenshots/home.jpg)
@@ -39,6 +39,9 @@ Cloudflare account.
 | --- | --- | --- | --- |
 | [`rk3228a-dongle`](boards/rk3228a-dongle/README.md) | Rockchip RK3228A | 256 MiB / 16 MiB SPI NOR | Works: display to 4K30, GPU, hardware video decoding, HDMI audio, Wi-Fi, flash boot |
 
+The board's page links the shop listing the development unit came from and a few possible
+international matches: [where to get one](boards/rk3228a-dongle/README.md#where-to-get-one).
+
 Other devices need a port: [boards/README.md](boards/README.md) says what a board directory
 contains and what the rest of the tree expects from it.
 
@@ -75,6 +78,12 @@ the phone remote only works on networks where the phone can reach the device dir
 
 Much of the component documentation is an engineering log: it records what was measured on
 the first board and when. Dates in it are 2026.
+
+## How it was made
+
+The whole firmware was vibecoded: the code, the hardware bring-up, the build system and
+these documents were written by Anthropic's Claude models (Claude Fable 5.2 and Claude
+Opus 5.5).
 
 ## Design credits
 

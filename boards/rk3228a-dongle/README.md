@@ -19,6 +19,25 @@ W25Q128. The tools check the USB ID and the flash's JEDEC ID and stop if either 
 they cannot tell a board with a different RAM or regulator layout. A unit whose stock firmware
 differs from the development unit's gets a warning: do the RAM steps first, they write nothing.
 
+## Where to get one
+
+The development unit was bought from this listing in Poland (sold as an "HDMI Wi-Fi adapter,
+4K, MirrorScreen"):
+
+- Allegro: <https://allegro.pl/oferta/adapter-hdmi-wifi-chromecast-stream-4k-bezprzewodowy-mirrorscreen-18583137928>
+
+Listings that look like the same product elsewhere. **None of these was bought or opened**:
+they are leads, not confirmations.
+
+- AliExpress: <https://www.aliexpress.com/item/1005009587548222.html>
+- AliExpress: <https://www.aliexpress.com/item/1005010008310588.html>
+- Alibaba (MiraScreen G2-4): <https://www.alibaba.com/product-detail/New-MiraScreen-G2-4-Wireless-WiFi_1601313929236.html>
+
+Sellers change what is inside a case without changing the listing, and listings disappear. A
+matching photo or name does not mean a matching board: check the chips as described above
+before flashing, and if you confirm (or rule out) a source, please open an issue so this list
+can say so.
+
 What works: display up to 4K30 (4K60 gives no picture), GPU at 60 fps in 1080p, hardware
 H.264 decoding to 1080p60, HDMI audio, Wi-Fi, all four cores, frequency and voltage scaling,
 thermal protection, boot from flash. The device has no heat sink and runs hot (about 100 °C
