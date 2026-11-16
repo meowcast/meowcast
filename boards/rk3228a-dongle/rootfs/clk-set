@@ -1,0 +1,44 @@
+#!/bin/sh
+# Perf-lab only: set an allow-listed clock through writable clk debugfs.
+#   clk-set gpu MHZ   200|240|300|400|600 (exact CPLL 1200 MHz dividers)
+#   clk-set cpu MHZ   408|600|696|816   (stock RK3228A DVFS range)
+#   clk-set vop MHZ   300|400           (CPLL dividers; stock used 400)
+# No voltage is changed. GPU 500 MHz hung the SoC under heavy fill load at the
+# unknown boot vdd_logic (stock needed 1.15 V for 500), so the GPU is capped at
+# 400 MHz (stock: 1.10 V). 600 MHz only with vdd_logic at 1.15 V (stock DVFS
+# top point); clk-set refuses it unless the pwm-regulator reports 1150000 uV.
+# Run only while no GPU/display test is active.
+c=/sys/kernel/debug/clk
+case "$1:$2" in
+    gpu:200|gpu:240|gpu:300|gpu:400|gpu:600) node=aclk_gpu_pre ;;
+    cpu:408|cpu:600|cpu:696|cpu:816) node=armclk ;;
+    vop:300|vop:400) node=aclk_vop_pre ;;
+    *) echo 'usage: clk-set gpu 200|240|300|400|600 | cpu 408|600|696|816 | vop 300|400' >&2; exit 2 ;;
+esac
+[ -w "$c/$node/clk_rate" ] || { echo 'clk debugfs is not writable (perf profile only)' >&2; exit 1; }
+if [ "$node" != armclk ] && [ "$(cat "$c/cpll/clk_rate")" != 1200000000 ]; then
+    echo 'CPLL is not 1200 MHz; refusing (divider plan assumes it)' >&2; exit 1
+fi
+if [ "$1:$2" = gpu:600 ] && ! grep -qx 1150000 /sys/class/regulator/*/microvolts 2>/dev/null; then
+    echo 'vdd_logic not confirmed at 1.15 V; refusing 600 MHz' >&2; exit 1
+fi
+df=/sys/class/devfreq/20000000.gpu
+if [ "$1" = gpu ] && [ -d $df ]; then
+    # Lima devfreq owns the GPU clock: pin it with the userspace governor.
+    # Thermal cooling still caps it (it lowers max_freq), so read back cur_freq.
+    [ "$2" = 600 ] && { echo '600 MHz is not in the DVFS table' >&2; exit 1; }
+    echo userspace > $df/governor && echo "${2}000000" > $df/userspace/set_freq || exit 1
+    echo "CLK_SET gpu devfreq cur_freq=$(cat $df/cur_freq) max_freq=$(cat $df/max_freq) clk=$(cat $c/aclk_gpu/clk_rate)"
+    exit 0
+fi
+cf=/sys/devices/system/cpu/cpu0/cpufreq
+if [ "$1" = cpu ] && [ -d $cf ]; then
+    [ "$2" = 696 ] && { echo '696 MHz is not in the CPU DVFS table' >&2; exit 1; }
+    echo userspace > $cf/scaling_governor && echo "${2}000" > $cf/scaling_setspeed || exit 1
+    echo "CLK_SET cpu cpufreq cur=$(cat $cf/scaling_cur_freq)kHz armclk=$(cat $c/armclk/clk_rate)"
+    exit 0
+fi
+echo "${2}000000" > "$c/$node/clk_rate" || exit 1
+got=$(cat "$c/$node/clk_rate")
+echo "CLK_SET $1 $node=$got parent=$(cat "$c/$node/clk_parent" 2>/dev/null)"
+[ "$got" = "${2}000000" ] || { echo "CLK_SET_MISMATCH requested=${2}MHz" >&2; exit 1; }

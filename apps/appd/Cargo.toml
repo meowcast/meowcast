@@ -1,0 +1,24 @@
+[package]
+name = "appd"
+version = "0.1.0"
+description = "meow app manager: signed store client, sandboxed launcher, capability broker"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+# Dependencies (licences, all GPLv3-compatible):
+# - libc 0.2            MIT/Apache   syscalls: namespaces, mounts, seccomp, landlock, SCM_RIGHTS
+# - serde 1 + derive    MIT/Apache   manifest / state (de)serialisation
+# - serde_json 1        MIT/Apache   JSON manifests, grants, store index
+# - ed25519-compact 2   MIT          manifest signatures (no deps, small)
+# - sha2 0.10           MIT/Apache   payload and storage-snapshot hashes
+# - meow-netd (local)   GPL-3.0+     network daemon (multi-call entry point meow-netd)
+[dependencies]
+libc = "0.2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+ed25519-compact = { version = "2", default-features = false }
+sha2 = { version = "0.10", default-features = false }
+# The network daemon, same binary (/usr/bin/meow-netd -> appd): apps/netd.
+meow-netd = { path = "../netd" }

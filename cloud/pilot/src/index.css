@@ -1,0 +1,35 @@
+@import "tailwindcss";
+
+/* Colours follow the TV UI (Plasma Bigscreen look): navy background, Breeze cyan focus. */
+@theme {
+  --color-background: #0f1221;
+  --color-foreground: #f4f6fb;
+  --color-card: #171a2e;
+  --color-card-foreground: #f4f6fb;
+  --color-primary: #3daee9;
+  --color-primary-foreground: #06121b;
+  --color-secondary: #262a44;
+  --color-secondary-foreground: #e6e9f5;
+  --color-muted-foreground: #9aa1bd;
+  --color-border: #2c3150;
+  --color-ring: #3daee9;
+  --font-sans: "Noto Sans", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+
+/* The small viewport height where there is one: the remote never scrolls under a phone
+   browser's toolbars. */
+html, body, #root { height: 100%; }
+@supports (height: 100dvh) {
+  html, body, #root { height: 100dvh; }
+}
+body {
+  margin: 0;
+  background: radial-gradient(120% 80% at 30% 0%, #2a1f45 0%, #151128 45%, #0f1221 100%) fixed;
+  color: var(--color-foreground);
+  font-family: var(--font-sans);
+  -webkit-tap-highlight-color: transparent;
+  -webkit-touch-callout: none;
+  touch-action: manipulation;
+  overscroll-behavior: none;
+  user-select: none;
+}

@@ -1,0 +1,18 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  // Relay between the pilot web app (meowcast-pilot: static-assets Worker, cloud/pilot/wrangler.jsonc) and dongles.
+  // One Durable Object per device id; see src/index.ts and ../README.md.
+  "name": "meowcast-relay",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-10-28",
+  "vars": {
+    // Origins allowed to call the API from a browser (the pilot app). ../deploy.sh replaces
+    // this with your pilot app's origin (MEOW_PILOT_URL in config.env) at deploy time.
+    "PILOT_ORIGINS": "http://localhost:5173"
+  },
+  "durable_objects": {
+    "bindings": [{ "name": "DEVICE", "class_name": "Device" }]
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Device"] }],
+  "observability": { "enabled": true }
+}

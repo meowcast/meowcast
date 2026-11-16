@@ -1,0 +1,18 @@
+#!/bin/sh
+# clkab CLK RATE_A RATE_B SECONDS CYCLES: alternate a clock rate (writable clk
+# debugfs, LAB kernel) and log each phase's mean temperature over its last 60 s.
+c=/sys/kernel/debug/clk/$1; ra=$2; rb=$3; secs=${4:-300}; cyc=${5:-2}; i=0
+while [ $i -lt $cyc ]; do
+    for r in $ra $rb; do
+        echo $r > $c/clk_rate
+        t0=$(cut -d. -f1 /proc/uptime); sum=0; n=0
+        while [ $(( $(cut -d. -f1 /proc/uptime) - t0 )) -lt $secs ]; do
+            t=$(cat /sys/class/thermal/thermal_zone0/temp)
+            [ $(( $(cut -d. -f1 /proc/uptime) - t0 )) -ge $((secs - 60)) ] && { sum=$((sum + t)); n=$((n + 1)); }
+            sleep 5
+        done
+        echo "CLKAB $1=$(cat $c/clk_rate) mean60=$((sum / n))"
+    done
+    i=$((i + 1))
+done
+echo CLKAB_DONE

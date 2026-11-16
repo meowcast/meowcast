@@ -1,0 +1,7 @@
+// SPDX-License-Identifier: (GPL-2.0+ OR MIT)
+#include "rk3228a-miracast-graphics.dts"
+/ { model = "RK3228A Miracast HDMI direct-DMA diagnostic"; };
+// Diagnostic isolation of the observed display IOMMU BUS_ERROR at IOVA zero.
+// Rockchip DRM falls back to contiguous CMA buffers with physical DMA addresses.
+&vop { /delete-property/ iommus; };
+&vop_mmu { status = "disabled"; };

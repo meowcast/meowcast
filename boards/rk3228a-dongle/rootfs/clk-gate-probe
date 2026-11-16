@@ -1,0 +1,41 @@
+#!/bin/sh
+# Perf-lab only. Reproduce the kernel's "disable unused clocks" pass one clock at
+# a time, to find which clock (left running by the bootloader and hidden by
+# clk_ignore_unused) the board cannot live without.
+# For every clock with software enable count 0 but hardware enabled, in reverse
+# tree order (children first, like clk_disable_unused), print its name, wait so
+# the line reaches the USB console, then enable+disable it via writable debugfs,
+# which gates it in hardware. If the board hangs, the last GATE line is the one.
+#   clk-gate-probe [skip-regex]   (gated clocks stay off until reboot)
+c=/sys/kernel/debug/clk
+skip=${1:-^$}
+awk 'NR>2 && $2=="0" && $9=="Y" {print $1}' $c/clk_summary > /tmp/gate-list
+n=$(wc -l < /tmp/gate-list)
+echo "GATE_CANDIDATES $n: $(tr '\n' ' ' < /tmp/gate-list)"
+i=$n
+while [ "$i" -gt 0 ]; do
+    name=$(sed -n "${i}p" /tmp/gate-list)
+    i=$((i - 1))
+    echo "$name" | grep -q -E "$skip" && { echo "SKIP $name"; continue; }
+    # The kernel pass never touches CLK_IGNORE_UNUSED/critical clocks (DDR
+    # controller, PLLs, armclk...). Gating ddrc here hung the board (11 Nov).
+    if grep -q -E 'CLK_IGNORE_UNUSED|CLK_IS_CRITICAL' "$c/$name/clk_flags" 2>/dev/null || [ ! -r "$c/$name/clk_flags" ]; then
+        echo "KEEP $name (ignore-unused/critical or flags unreadable)"; continue
+    fi
+    # A debugfs enable+disable also drops each parent's count; the kernel pass
+    # only gates the clock itself. If an ancestor is ignore-unused/critical with
+    # count 0, our disable would switch that ancestor off too (this powered down
+    # the DDR PLL via "dpll", 11 Nov). Skip such clocks.
+    p=$(cat "$c/$name/clk_parent" 2>/dev/null); unsafe=
+    while [ -n "$p" ] && [ -d "$c/$p" ]; do
+        if [ "$(cat "$c/$p/clk_enable_count")" = 0 ] && grep -q -E 'CLK_IGNORE_UNUSED|CLK_IS_CRITICAL' "$c/$p/clk_flags" 2>/dev/null; then
+            unsafe=$p; break
+        fi
+        p=$(cat "$c/$p/clk_parent" 2>/dev/null)
+    done
+    [ -n "$unsafe" ] && { echo "KEEP $name (would also drop ignore-unused parent $unsafe)"; continue; }
+    echo "GATE $name"
+    sleep 1
+    echo 1 > "$c/$name/clk_prepare_enable" && echo 0 > "$c/$name/clk_prepare_enable" || echo "GATE_ERROR $name"
+done
+echo GATE_PROBE_DONE

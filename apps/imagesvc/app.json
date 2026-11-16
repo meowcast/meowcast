@@ -1,0 +1,13 @@
+{
+  "id": "dev.meow.image",
+  "name": "Image service",
+  "summary": "Decodes WebP and JPEG pictures for apps",
+  "version": "0.1.0",
+  "version_code": 1,
+  "exec": "bin/meow-image",
+  "publisher": "meow",
+  "service": "image",
+  "permissions": [],
+  "resources": { "memory_mb": 16, "tmp_mb": 1, "pids": 12, "cpu_weight": 100 },
+  "appearance": { "glyph": "globe", "tint": "#14202a", "badge": ["#7bd88f", "#2a9d5c"], "shape": "circle" }
+}

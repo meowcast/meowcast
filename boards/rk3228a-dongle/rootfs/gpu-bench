@@ -1,0 +1,22 @@
+#!/bin/sh
+# Standard GPU benchmark set at the current clocks: gpu-bench off|on|all [seconds]
+# off: native 4K offscreen triangle, 1080p offscreen with 8 blended layers
+# on:  4K30 native, 1080p rendered + VOP upscaled to 4K30, same with 4 layers
+s=${2:-8}
+run() {
+    echo "CASE $*"
+    gpu-test "$@" --seconds "$s" --fps 0 --profile --verify 2>&1 |
+        grep -E 'KMS_MODESET_PASS|RENDER_RESULT|VERIFY |PROFILE|FAIL|INFLIGHT'
+    echo "TEMP $(cat /sys/class/thermal/thermal_zone0/temp)"
+    sleep 2
+}
+echo "CLOCKS gpu=$(cat /sys/kernel/debug/clk/aclk_gpu/clk_rate) cpu=$(cat /sys/kernel/debug/clk/armclk/clk_rate) vop=$(cat /sys/kernel/debug/clk/aclk_vop/clk_rate)"
+case "${1:-all}" in off|all)
+    run --offscreen --mode 3840x2160@30 --inflight 2
+    run --offscreen --mode 1920x1080@60 --inflight 2 --layers 8 ;;
+esac
+case "${1:-all}" in on|all)
+    run --mode 3840x2160@30
+    run --mode 3840x2160@30 --render 1920x1080
+    run --mode 3840x2160@30 --render 1920x1080 --layers 4 ;;
+esac

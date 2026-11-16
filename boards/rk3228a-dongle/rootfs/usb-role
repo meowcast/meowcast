@@ -1,0 +1,111 @@
+#!/bin/sh
+# usb-role [auto|device|host]: choose the OTG port's role (dwc2 role switch, perf DTS).
+# The same micro-USB port either reaches the Mac (USB console + Ethernet: device role) or,
+# with the dongle's original cable, the RTL8733BU Wi-Fi chip inside the cable (host role).
+# Nothing on the cable says which (no ID pin), so auto mode stays a device for DEVICE_WAIT
+# seconds and becomes a host when no computer has enumerated the gadget by then. If no USB
+# device shows up as a host either, it goes back to device (a slow or sleeping computer).
+# Override for development: echo device > /data/net/usb-role (or host).
+# Result: /run/usb-role (device|host|device-fallback); log /run/usb-role.log, and the last
+# boots in /data/net/usb-role.log (read it over the USB console after a Wi-Fi-cable boot).
+DEVICE_WAIT=${DEVICE_WAIT:-4}
+HOST_WAIT=${HOST_WAIT:-12}
+mode=${1:-auto}
+[ "$mode" = auto ] && [ -f /data/net/usb-role ] && mode=$(cat /data/net/usb-role)
+sw=$(ls -d /sys/class/usb_role/*/ 2>/dev/null | head -n 1)
+udc=$(ls /sys/class/udc 2>/dev/null | head -n 1)
+log() {
+    m="[$(cut -d' ' -f1 /proc/uptime)] usb-role: $*"
+    echo "$m" >> /run/usb-role.log
+    echo "$m"
+}
+set_role() {
+    echo "$1" > "${sw}role" 2>>/run/usb-role.log
+    log "role -> $1 (now $(cat "${sw}role" 2>/dev/null))"
+}
+usb_devices() {
+    # Devices on the dwc2 root hub: 1-1, 1-1.1, ... (not the hub usb1, not interfaces 1-0:1.0).
+    for d in /sys/bus/usb/devices/*-*; do
+        case "${d##*/}" in *:*) ;; *) [ -e "$d" ] && echo "$d" ;; esac
+    done
+}
+phy_regs() {
+    # LAB builds: the OTG PHY's GRF control word (0x760; 0x1d1 = suspended) and its neighbours.
+    command -v reg >/dev/null && log "GRF usbphy0 $1: $(reg 0x11000760 4 2>&1 | tr '\n' ' ')"
+}
+finish() {
+    echo "$1" > /run/usb-role
+    if grep -q " /data " /proc/mounts; then
+        mkdir -p /data/net
+        [ -f /data/net/usb-role.log ] && [ "$(wc -c < /data/net/usb-role.log)" -gt 16384 ] && \
+            tail -n 60 /data/net/usb-role.log > /data/net/usb-role.log.new && mv /data/net/usb-role.log.new /data/net/usb-role.log
+        { echo "--- boot $(date -u '+%Y-%m-%d %H:%M:%S') uptime $(cut -d' ' -f1 /proc/uptime): $1"; cat /run/usb-role.log; } >> /data/net/usb-role.log
+    fi
+}
+
+if [ -z "$sw" ]; then
+    log "no role switch (kernel without dual-role USB): device only"
+    echo device > /run/usb-role
+    exit 0
+fi
+log "mode $mode, switch $sw, udc $udc, now $(cat "${sw}role")"
+case "$mode" in
+device)
+    set_role device
+    finish device
+    exit 0
+    ;;
+host)
+    set_role host
+    finish host
+    exit 0
+    ;;
+esac
+
+# auto: was the gadget enumerated by a computer?
+i=0
+while [ $i -lt $((DEVICE_WAIT * 10)) ]; do
+    st=$(cat /sys/class/udc/$udc/state 2>/dev/null)
+    case "$st" in
+    configured|suspended)
+        log "gadget $st after $((i / 10)).$((i % 10)) s: computer attached, staying a device"
+        finish device
+        exit 0
+        ;;
+    esac
+    usleep 100000
+    i=$((i + 1))
+done
+log "gadget state '$st' after ${DEVICE_WAIT} s: trying host (Wi-Fi cable?)"
+phy_regs before
+set_role host
+usleep 300000
+phy_regs after
+dmesg | grep -iE "dwc2|usb 1-" | tail -n 5 | while read -r l; do log "kernel: $l"; done
+i=0
+while [ $i -lt $((HOST_WAIT * 10)) ]; do
+    d=$(usb_devices)
+    if [ -n "$d" ]; then
+        for x in $d; do
+            log "USB device $x: $(cat $x/idVendor 2>/dev/null):$(cat $x/idProduct 2>/dev/null) $(cat $x/manufacturer 2>/dev/null) $(cat $x/product 2>/dev/null) speed $(cat $x/speed 2>/dev/null)"
+        done
+        finish host
+        # The driver creates wlan0 (+ wlan1) a moment later; log it for the record.
+        j=0
+        while [ $j -lt 50 ] && ! ls /sys/class/net/*/phy80211 >/dev/null 2>&1; do usleep 200000; j=$((j + 1)); done
+        log "wireless interfaces: $(for n in /sys/class/net/*; do [ -e $n/phy80211 ] && printf '%s ' "${n##*/}"; done)"
+        finish host
+        # A Wi-Fi-cable boot has no console: keep one snapshot for later (USB console or
+        # meowdbg): /data/net/wifi-boot.log.
+        sleep 90
+        { echo "=== $(date -u) uptime $(cut -d' ' -f1 /proc/uptime)"; dmesg | tail -n 200; echo "=== netd"; tail -n 120 /run/netd.log
+          for f in /run/netd/wpa-*.log; do echo "=== $f"; tail -n 120 "$f"; done
+          echo "=== state"; grep -v '^qr_' /run/netd/state; ip addr; } > /data/net/wifi-boot.log 2>&1
+        exit 0
+    fi
+    usleep 100000
+    i=$((i + 1))
+done
+log "no USB device after ${HOST_WAIT} s as host: back to device"
+set_role device
+finish device-fallback

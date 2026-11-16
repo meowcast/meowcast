@@ -1,0 +1,8 @@
+#!/bin/sh
+# One-shot network report. Result lines start with NET_.
+ip -4 addr show 2>&1 | sed 's/^/NET_ADDR /'
+ip route 2>&1 | sed 's/^/NET_ROUTE /'
+sed 's/^/NET_RESOLV /' /etc/resolv.conf 2>/dev/null
+[ -f /run/net.env ] && sed 's/^/NET_ENV /' /run/net.env
+echo "NET_NTPD $(pidof ntpd || echo none)"
+echo "NET_DATE $(date -u '+%Y-%m-%d %H:%M:%S UTC')"

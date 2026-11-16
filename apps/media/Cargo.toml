@@ -1,0 +1,25 @@
+[package]
+name = "meow-media"
+version = "0.1.0"
+description = "Hardware media stack for meow apps: demux, rkvdec H.264, AAC, sound card, display planes, A/V sync"
+edition.workspace = true
+rust-version.workspace = true
+license = "MIT OR Apache-2.0"
+publish.workspace = true
+
+[lib]
+name = "meow_media"
+
+# Dependencies (licences):
+# - meow-app (path)    MIT/Apache            the system's volume curve (the same for every app)
+# - libc 0.2           MIT/Apache            ioctl, mmap, poll for the V4L2 decoder and the sound card
+# - symphonia-core / symphonia-codec-aac 0.5   MPL-2.0   AAC-LC decoding in software (pure Rust)
+# - ab_glyph 0.2        Apache-2.0            UI text (the system's Noto Sans), as the launcher
+# - drm 0.14           MIT                   KMS: the video plane (as the SDK and the launcher)
+[dependencies]
+meow-app = { path = "../sdk" }
+libc = "0.2"
+drm = "0.14"
+ab_glyph = { version = "0.2", default-features = false, features = ["std"] }
+symphonia-core = "0.5"
+symphonia-codec-aac = "0.5"

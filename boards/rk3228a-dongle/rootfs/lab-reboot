@@ -1,0 +1,13 @@
+#!/bin/sh
+# lab-reboot [fst|snd] [clean]: reboot straight back into MaskROM (flag set by
+# linux_entry.S). The labreg restart handler undoes Linux state the BootROM
+# needs, then issues the chosen global soft reset (default: first, as U-Boot's
+# "back to bootrom download" does). Default is an emergency restart (sysrq b,
+# no device shutdown, the same path as panic=); "clean" runs kernel shutdown.
+echo LAB_REBOOTING
+case "$1" in fst|snd) echo "reset $1" > /sys/kernel/debug/labreg; shift ;; snd-restore) echo "reset $1 ${2:-1f}" > /sys/kernel/debug/labreg; shift; [ -n "$1" ] && [ "$1" != clean ] && shift ;; esac
+if [ "$1" = clean ]; then
+    (sleep 1; reboot -f) >/dev/null 2>&1 </dev/null &
+else
+    (sleep 1; echo b > /proc/sysrq-trigger) >/dev/null 2>&1 </dev/null &
+fi

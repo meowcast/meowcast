@@ -1,0 +1,100 @@
+#!/bin/sh
+export PATH=/bin:/sbin:/usr/bin:/usr/sbin
+# The initramfs root arrives world-writable (1777); nothing needs that, and the debug bridge
+# (dropbear) refuses keys under a group/world-writable /.
+chmod 755 /
+mount -t proc proc /proc
+mount -t sysfs sysfs /sys
+mount -t devtmpfs devtmpfs /dev
+mkdir -p /dev/pts /run /tmp /sys/kernel/debug /sys/fs/pstore
+mount -t devpts devpts /dev/pts
+mount -t tmpfs -o size=8m tmpfs /tmp
+mount -t tmpfs -o size=4m tmpfs /run
+mount -t debugfs debugfs /sys/kernel/debug
+mount -t pstore pstore /sys/fs/pstore
+mount -t configfs none /sys/kernel/config
+mkdir -p /opt
+# Larger scratch for deployed binaries (tmpfs only uses RAM for what is stored).
+mount -t tmpfs -o size=96m tmpfs /opt
+exec >/run/init.log 2>&1
+echo 0 > /proc/sys/kernel/kptr_restrict
+# Bring the USB console (ACM, /dev/ttyGS0) and USB Ethernet up first.
+usb-gadget ecm
+# Lab recovery: linux_entry.S armed the watchdog and the kernel keeps it pinged
+# until this daemon takes over; a hung kernel or a stopped daemon then resets
+# the SoC into MaskROM. (kill -STOP $(pidof watchdog) tests it.)
+if [ -c /dev/watchdog ]; then
+    watchdog -T 15 -t 2 /dev/watchdog
+fi
+# Thermal supervisor (thermald.c, rootfs/thermald-session): throttle levels above the kernel's
+# passive trips and the emergency cooldown (output off for a minute instead of a reboot).
+# Before the UI and appd: it must not depend on either. Log: /run/thermal/log.
+[ -x /usr/bin/meow-thermald ] && thermald-session start
+# TV UI: boot intro, then the home screen (rootfs/ui-session; output mode from video=).
+if [ -x /usr/bin/miracast-ui ]; then
+    ui-session start
+fi
+# Clocks of SoC blocks this board never uses (Ethernet, crypto, SD, RGA, ...): off. About
+# 2.4 C at idle (rootfs/clk-gate-unused). After the UI start so that the intro is not held up.
+[ -x /bin/clk-gate-unused ] && clk-gate-unused
+# cgroup v2: per-app memory/pids/cpu limits (appd creates /sys/fs/cgroup/apps/<id>).
+mkdir -p /sys/fs/cgroup
+grep -q cgroup2 /proc/filesystems && mount -t cgroup2 -o nosuid,nodev,noexec cgroup2 /sys/fs/cgroup
+# Compressed swap in RAM (zram, lz4). Everything here lives in RAM: the rootfs and /apps are
+# tmpfs, so without swap nothing can ever be reclaimed. With it, cold pages (unused binaries
+# and libraries, idle daemons) are compressed when memory gets tight; nothing happens before.
+# Apps themselves never swap (appd sets memory.swap.max=0), so their limits mean RAM.
+# mem_limit caps what the compressed store may take; page-cluster 0 = no swap read-ahead.
+if [ -e /sys/block/zram0/disksize ]; then
+    echo 64M > /sys/block/zram0/disksize
+    echo 32M > /sys/block/zram0/mem_limit
+    if mkswap /dev/zram0 >/dev/null && swapon -p 10 /dev/zram0; then
+        echo 0 > /proc/sys/vm/page-cluster
+        echo "SWAP zram0 64M lz4"
+    else
+        echo "SWAP zram0 setup failed"
+    fi
+fi
+# /data: JFFS2 on the SPI-NOR "data" partition (0xc00000-0xfe0000): app manifests, permission
+# grants, settings and app storage snapshots. Mounted after the UI start so it never delays
+# the boot intro. If the partition is missing (older kernel) or does not mount, /data is a
+# small tmpfs and /run/data-volatile says so (nothing then survives a reboot).
+mkdir -p /data
+if grep -q '"data"' /proc/mtd 2>/dev/null && mount -t jffs2 -o noatime,nosuid,nodev mtd:data /data; then
+    echo "DATA jffs2 mtd:data mounted"
+else
+    mount -t tmpfs -o size=4m,mode=0755,nosuid,nodev tmpfs /data
+    echo "DATA volatile (tmpfs)" | tee /run/data-volatile
+fi
+# USB role (rootfs/usb-role): stay a gadget for the Mac, or become the host of the Wi-Fi chip
+# in the dongle's original cable. In the background: it waits a few seconds for enumeration.
+[ -x /bin/usb-role ] && (usb-role auto >/dev/null 2>&1 &)
+# App manager (rootfs/appd-session): store client, sandboxed app launcher, UI broker.
+[ -x /usr/bin/appd ] && appd-session start
+# Network daemon (rootfs/netd-session): Wi-Fi, the pilot app server and pairing, debug bridge.
+[ -x /usr/bin/meow-netd ] && netd-session start
+# The hardware button (rootfs/buttond-session, ../buttond.c): a short press shows the pairing
+# screen, a long hold let go in its window is a factory reset (rootfs/factory-reset). Last of
+# the services: the reset stops and starts the three above. A button that is down now (stuck,
+# or still held from a power-on that did not reach MaskROM) is ignored until it is let go.
+[ -x /usr/bin/meow-buttond ] && buttond-session start
+# Reference hashes of the in-RAM userspace, to detect stray DMA writes later.
+sha256sum /bin/busybox /bin/gpu-test /usr/bin/miracast-ui /usr/bin/appd /usr/share/udhcpc/default.script /usr/lib/*.so* /lib/*.so* > /run/boot.sha 2>/dev/null
+bringup-report > /run/bringup.txt 2>&1
+cat /run/bringup.txt
+net-up
+# Keep an unresponsive display commit from blocking the USB diagnostic shell.
+if [ -c /dev/tty1 ]; then
+    (echo 'Linux 7.3.4 RAM boot - USB diagnostic shell available' > /dev/tty1) &
+fi
+# A USB disconnect/reconnect must not kill PID 1. Respawn diagnostic shells.
+if [ -c /dev/ttyAMA0 ]; then
+    while true; do setsid sh -c 'exec sh -i </dev/ttyAMA0 >/dev/ttyAMA0 2>&1'; sleep 1; done &
+fi
+while true; do
+    if [ -c /dev/ttyGS0 ]; then
+        cat /run/bringup.txt > /dev/ttyGS0
+        setsid sh -c 'exec sh -i </dev/ttyGS0 >/dev/ttyGS0 2>&1'
+    fi
+    sleep 1
+done

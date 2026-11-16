@@ -1,0 +1,63 @@
+diff --git a/RKComm.h b/RKComm.h
+index 36388b6..8661eff 100644
+--- a/RKComm.h
++++ b/RKComm.h
+@@ -84,7 +84,7 @@ typedef struct {
+ } CSW, *PCSW;
+ 
+ #pragma pack()
+-#define CMD_TIMEOUT 0
++#define CMD_TIMEOUT 5000
+ #define CBW_SIGN			0x43425355	/* "USBC" */
+ #define CSW_SIGN			0x53425355	/* "USBS" */
+ 
+@@ -177,4 +177,4 @@ private:
+ 	DWORD MakeCBWTag();
+ };
+ 
+-#endif
+\ No newline at end of file
++#endif
+diff --git a/crc.cpp b/crc.cpp
+index 567770f..c944597 100644
+--- a/crc.cpp
++++ b/crc.cpp
+@@ -260,10 +260,10 @@ unsigned short CRC_16(unsigned char* aData, UINT aSize)
+     return nAccum;
+ }
+ 
+-void P_RC4(unsigned char* buf, unsigned short len)
++void P_RC4(unsigned char* buf, UINT len)
+ {
+ 	unsigned char S[256],K[256],temp;
+-	unsigned short i,j,t,x;
++	UINT i,j,t,x;
+ 	unsigned char key[16]={124,78,3,4,85,5,9,7,45,44,123,56,23,13,23,17};
+ 
+ 	j = 0;
+diff --git a/main.cpp b/main.cpp
+index 42bfbab..180d9dc 100644
+--- a/main.cpp
++++ b/main.cpp
+@@ -27,7 +27,7 @@ CONFIG_ITEM_VECTOR g_ConfigItemVec;
+ #define NORMAL_COLOR_ATTR  printf("%c[0m", 0x1B);
+ extern UINT CRC_32(unsigned char* pData, UINT ulSize);
+ extern unsigned short CRC_16(unsigned char* aData, UINT aSize);
+-extern void P_RC4(unsigned char* buf, unsigned short len);
++extern void P_RC4(unsigned char* buf, UINT len);
+ extern unsigned int crc32_le(unsigned int crc, unsigned char *p, unsigned int len);
+ /*
+ u8 test_gpt_head[] = {
+@@ -1147,9 +1147,11 @@ static bool parseLoader(FILE* file) {
+ 		if (fscanf(file, OPT_LOADER_NAME "%d=%s", &index, buf)
+ 				!= 2)
+ 			return false;
++		index--;
++		if (index < 0 || index >= gOpts.loaderNum)
++			return false;
+ 		strcpy(gOpts.loader[index].name, buf);
+ 		printf("name%d: %s\n", index, gOpts.loader[index].name);
+-		index++;
+ 	}
+ 	for (i=0; i<gOpts.loaderNum; i++) {
+ 		if (SCANF_EAT(file) != 0) {

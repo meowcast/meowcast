@@ -1,0 +1,26 @@
+#!/bin/sh
+echo '=== MIRACAST RAM LINUX BRING-UP ==='
+uname -a
+echo 'Volatile BusyBox system; SPI/MTD/MMC drivers excluded.'
+echo '--- Memory ---'
+cat /proc/meminfo
+echo '--- CPU ---'
+cat /proc/cpuinfo
+echo '--- USB controllers and devices ---'
+ls -l /sys/class/udc /sys/bus/usb/devices 2>/dev/null
+echo '--- DRM / GPU ---'
+ls -l /dev/dri /dev/fb* /sys/class/drm 2>/dev/null
+for f in /sys/class/drm/card*-*/status /sys/class/drm/card*-*/modes; do
+    [ ! -f "$f" ] || { echo "$f"; cat "$f"; }
+done
+echo '--- SDIO / network ---'
+ls -l /sys/bus/sdio/devices /sys/class/net 2>/dev/null
+echo '--- Thermal ---'
+for f in /sys/class/thermal/thermal_zone*/temp; do
+    [ ! -f "$f" ] || { echo "$f"; cat "$f"; }
+done
+echo '--- Probe failures ---'
+cat /sys/kernel/debug/devices_deferred 2>/dev/null
+dmesg | grep -i -E 'error|fail|warn|lima|mali|drm|hdmi|dwc|usb|memory|ramoops'
+echo '=== RAMBOOT_READY ==='
+echo 'Commands: bringup-report, dmesg, free, cat /proc/iomem'

@@ -1,0 +1,15 @@
+// MEDIA=1 device-tree additions (build.sh includes this after the board file): HDMI audio.
+// The video decoder nodes (vdec, vdec_mmu) are enabled by default in rk322x.dtsi and only
+// need the driver from kernel-media.config. Proven on hardware 14 Nov 2026.
+/ {
+    hdmi_sound: hdmi-sound {
+        compatible = "simple-audio-card";
+        simple-audio-card,name = "HDMI";
+        simple-audio-card,format = "i2s";
+        simple-audio-card,mclk-fs = <256>;
+        simple-audio-card,cpu { sound-dai = <&i2s0>; };
+        simple-audio-card,codec { sound-dai = <&hdmi>; };
+    };
+};
+&hdmi { #sound-dai-cells = <0>; };
+&i2s0 { #sound-dai-cells = <0>; status = "okay"; };

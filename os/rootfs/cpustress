@@ -1,0 +1,18 @@
+#!/bin/sh
+# cpustress SECONDS [THREADS]: 4 parallel sha256 loops over an 8 MiB random
+# buffer; any hash mismatch = CPU/DRAM error (voltage too low). CPUSTRESS line.
+t=${1:-60}; n=${2:-4}
+dd if=/dev/urandom of=/opt/cs.bin bs=1M count=8 2>/dev/null
+ref=$(sha256sum /opt/cs.bin | cut -c1-64); i=0
+while [ $i -lt $n ]; do
+    ( end=$(( $(cut -d. -f1 /proc/uptime) + t )); ok=0; bad=0
+      while [ $(cut -d. -f1 /proc/uptime) -lt $end ]; do
+          h=$(sha256sum /opt/cs.bin | cut -c1-64)
+          [ "$h" = "$ref" ] && ok=$((ok+1)) || bad=$((bad+1))
+      done; echo "$ok $bad" > /opt/cs.$i ) &
+    i=$((i+1))
+done
+wait; ok=0; bad=0; i=0
+while [ $i -lt $n ]; do set -- $(cat /opt/cs.$i); ok=$((ok+$1)); bad=$((bad+$2)); i=$((i+1)); done
+rm -f /opt/cs.bin /opt/cs.[0-9]
+echo "CPUSTRESS ok=$ok bad=$bad seconds=$t threads=$n freq=$(cat /sys/devices/system/cpu/cpufreq/policy0/scaling_cur_freq) temp=$(cat /sys/class/thermal/thermal_zone0/temp) uv=$(cat /sys/class/regulator/*/microvolts | tr '\n' ,)"

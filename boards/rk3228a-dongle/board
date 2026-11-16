@@ -1,0 +1,58 @@
+#!/bin/sh
+# Command-line front end for this board's boot and flash tools (./meow board ...).
+# Every command is an ordinary script in this directory; README.md explains each step.
+set -eu
+here=$(cd "$(dirname "$0")" && pwd)
+cd "$here"
+usage() {
+    cat <<USAGE
+usage: ./meow board COMMAND
+
+Device in MaskROM (hold the button while plugging in USB, HDMI unplugged):
+  tools                 fetch and build the host tools (once)
+  dump                  read the whole flash twice, compare, save as stock/nor-stock.bin
+  boot                  load the built firmware into RAM and start it (flash untouched)
+  pack                  build the flash image from your stock dump and the built firmware
+  flash IMAGE SHA256 [--write]
+                        compare the flash with IMAGE (dry run), or program it with --write
+  rollback [--write]    put the stock dump back
+Device running the firmware (USB console):
+  sh 'COMMAND'          run a shell command on the device
+  state                 what the USB port shows: maskrom, linux or absent
+  reboot | cycle        reboot to MaskROM (LAB images) | reboot and RAM-boot again
+USAGE
+}
+stock() { python3 -I -c 'import sys; sys.path.insert(0, "."); import paths; p, _ = paths.stock_dump(); print(p)'; }
+dump_once() {
+    sh rockusb/build_ram_stage.sh stage_spi_read16m
+    sha=$(shasum -a 256 rockusb/stage_spi_read16m.bin | cut -d' ' -f1)
+    log=$(mktemp)
+    python3 -I rockusb/run_ram_callback.py --code rockusb/stage_spi_read16m.bin --sha256 "$sha" --output-bytes 128 | tee "$log"
+    run=$(sed -n 's/^Evidence directory: //p' "$log"); rm -f "$log"
+    python3 -I rockusb/capture_ram.py --result "$run/output-after.bin" --out "rockusb/$1"
+}
+command=${1:-help}; [ $# -gt 0 ] && shift
+case "$command" in
+    tools) exec ./fetch-tools.sh ;;
+    dump)
+        mkdir -p stock
+        [ ! -e stock/nor-stock.bin ] || { echo 'stock/nor-stock.bin exists: move it away first' >&2; exit 2; }
+        python3 -I rockusb/rockusb_ram_loader.py --no-ram-padding || echo '(helper already loaded?)'
+        t=$(date +%Y%m%dT%H%M%S)
+        dump_once "read-$t-a.bin"; dump_once "read-$t-b.bin"
+        cmp "rockusb/read-$t-a.bin" "rockusb/read-$t-b.bin" || { echo 'the two reads differ: do not use them' >&2; exit 1; }
+        mv "rockusb/read-$t-a.bin" stock/nor-stock.bin; rm -f "rockusb/read-$t-b.bin"
+        shasum -a 256 stock/nor-stock.bin | cut -d' ' -f1 > stock/nor-stock.bin.sha256
+        echo "saved stock/nor-stock.bin ($(cat stock/nor-stock.bin.sha256)). Back it up somewhere else as well."
+        ;;
+    boot|sh|state|reboot|cycle) exec python3 -I lab.py "$command" "$@" ;;
+    pack) sh flash/build.sh && exec python3 -I flash/pack-flash.py "$@" ;;
+    flash)
+        [ $# -ge 2 ] || { usage; exit 2; }
+        image=$1; sha=$2; shift 2
+        exec python3 -I flash/flash_nor.py --image "$image" --image-sha256 "$sha" "$@" ;;
+    rollback)
+        s=$(stock)
+        exec python3 -I flash/flash_nor.py --image "$s" --image-sha256 "$(shasum -a 256 "$s" | cut -d' ' -f1)" --end 0xfe0000 "$@" ;;
+    *) usage ;;
+esac

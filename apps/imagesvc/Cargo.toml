@@ -1,0 +1,31 @@
+[package]
+name = "meow-image"
+version = "0.1.0"
+description = "meow image service: decodes WebP and JPEG pictures for every app, in one tightly sandboxed process loaded from the store"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+# Dependencies (licences, all GPLv3-compatible):
+# - meow-app (path)    GPL-3.0+          broker messages, the request format (image.rs)
+# - libc 0.2           MIT/Apache        poll, signals
+# - image-webp 0.2     MIT/Apache        WebP: lossy (VP8), lossless (VP8L), alpha, the first
+#                                        frame of an animation. Pure Rust, `forbid(unsafe_code)`;
+#                                        brings byteorder-lite (Unlicense/MIT) and quick-error
+#                                        (MIT/Apache)
+# - zune-jpeg 0.5      MIT/Apache/Zlib   JPEG, baseline and progressive (as the launcher);
+#                                        brings zune-core
+[dependencies]
+meow-app = { path = "../sdk" }
+libc = "0.2"
+image-webp = "0.2"
+zune-jpeg = { version = "0.5", default-features = false, features = ["std"] }
+
+# Tests read the reference pictures (PNG) with meow_media::png.
+[dev-dependencies]
+meow-media = { path = "../media" }
+
+[[bin]]
+name = "meow-image"
+path = "src/main.rs"

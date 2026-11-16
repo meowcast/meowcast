@@ -1,0 +1,80 @@
+#!/bin/sh
+# factory-reset [button|settings]: erase everything the owner put on the dongle and start
+# over, as on the first boot. Run by meow-buttond (the hardware button, ../buttond.c) and by
+# the launcher (Settings > About > Factory reset); both ask for confirmation first, this
+# script does not.
+#
+# Everything that is not firmware lives on /data (JFFS2 on the SPI-NOR "data" partition):
+# Wi-Fi networks, paired phones, developer keys, installed apps and their permissions and
+# saved data, added repositories, settings, wallpaper. The reset:
+#   1. stops the app manager (and every app), the network daemon and the launcher;
+#   2. unmounts /data and erases the whole partition, block by block, so nothing of the old
+#      contents (the Wi-Fi password, pairing tokens) stays readable in the flash; if /data
+#      cannot be unmounted, its files are deleted instead;
+#   3. clears what the old state left in RAM (/apps, app storage, daemon state);
+#   4. mounts the empty /data and starts the three again: the TV shows the first-boot setup.
+# The firmware itself (NOR below 0xc00000) cannot be reached from Linux at all (the data
+# partition is the only MTD device), so a reset can never damage it. No reboot: on this
+# board a software reset is a lab matter (boards/rk3228a-dongle/docs/LAB-RECOVERY.md). About 10 s.
+# A power cut in the middle leaves a partly erased /data, which JFFS2 mounts as what is
+# left of it; run the reset again.
+#
+# Test without losing /data: FACTORY_RESET_KEEP=1 factory-reset test   (all but step 2's
+# erase/delete). Log: /run/factory-reset.log (in RAM; /data is being erased).
+PATH=/bin:/sbin:/usr/bin:/usr/sbin
+LOG=/run/factory-reset.log
+exec >>"$LOG" 2>&1 </dev/null
+mkdir /run/factory-reset.lock 2>/dev/null || { echo "FACTORY_RESET already running"; exit 0; }
+trap 'rmdir /run/factory-reset.lock 2>/dev/null' EXIT
+up() { cut -d' ' -f1 /proc/uptime; }
+# The test switch stays with this run: the sessions started below must not inherit it.
+keep=${FACTORY_RESET_KEEP:-0}
+unset FACTORY_RESET_KEEP
+echo "FACTORY_RESET start from=${1:-shell} uptime=$(up) keep=$keep"
+# The launcher is showing "Erasing…": let it draw that before it goes.
+sleep 1
+
+[ -x /bin/appd-session ] && appd-session stop
+[ -x /bin/netd-session ] && netd-session stop
+[ -x /bin/ui-session ] && ui-session stop
+# Development builds started by hand (/opt/ui/run.sh) are not under ui-session.
+killall miracast-ui 2>/dev/null
+sync
+
+data_fs=$(awk '$2 == "/data" { fs = $3 } END { print fs }' /proc/mounts)
+wipe_files() {
+    rm -rf /data/* /data/.[!.]* /data/..?* 2>/dev/null
+    sync
+    echo "FACTORY_RESET files deleted; left: $(ls -A /data | wc -l)"
+}
+if [ "$keep" = 1 ]; then
+    echo "FACTORY_RESET keep: /data ($data_fs) left as it is"
+elif [ "$data_fs" = jffs2 ]; then
+    i=0
+    while ! umount /data 2>/dev/null && [ $i -lt 5 ]; do sleep 1; i=$((i + 1)); done
+    if grep -q ' /data jffs2 ' /proc/mounts; then
+        echo "FACTORY_RESET /data is busy: deleting its files instead of erasing"
+        wipe_files
+    else
+        meow-buttond erase /dev/mtd0
+        if mount -t jffs2 -o noatime,nosuid,nodev mtd:data /data; then
+            echo "FACTORY_RESET /data erased and mounted: $(df -k /data | awk 'NR == 2 { print $3 " KiB used of " $2 }')"
+        else
+            # As init does when the partition does not mount: nothing is saved until a restart.
+            mount -t tmpfs -o size=4m,mode=0755,nosuid,nodev tmpfs /data
+            echo "DATA volatile (tmpfs)" > /run/data-volatile
+            echo "FACTORY_RESET /data erased but did not mount: tmpfs"
+        fi
+    fi
+else
+    wipe_files
+fi
+
+# RAM leftovers of the old state: installed app payloads, app storage, daemon state.
+for m in $(awk '$2 ~ "^/run/appd/" { print $2 }' /proc/mounts); do umount -l "$m" 2>/dev/null; done
+rm -rf /apps/* /run/appd /run/netd 2>/dev/null
+
+[ -x /bin/ui-session ] && UI_SESSION_INTRO=entrance ui-session start
+[ -x /bin/appd-session ] && appd-session start
+[ -x /bin/netd-session ] && netd-session start
+echo "FACTORY_RESET done uptime=$(up)"

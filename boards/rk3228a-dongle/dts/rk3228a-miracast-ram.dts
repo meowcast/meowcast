@@ -1,0 +1,64 @@
+// SPDX-License-Identifier: (GPL-2.0+ OR MIT)
+/dts-v1/;
+#include "rk322x.dtsi"
+
+/ {
+    model = "RK3228A Miracast dongle experimental RAM boot";
+    compatible = "experimental,rk3228a-miracast", "rockchip,rk3228";
+    chosen {
+        bootargs = "console=tty0 loglevel=4 printk.time=1 rdinit=/init panic=0 clk_ignore_unused pd_ignore_unused cpuidle.off=1 video=HDMI-A-1:1280x720@60 cma=16M";
+    };
+    // Stock DTB also declares this capacity, matching both DRAM packages.
+    // Validate against the running kernel; not a measured RAM size yet.
+    memory@60000000 {
+        device_type = "memory";
+        reg = <0x60000000 0x10000000>;
+    };
+    reserved-memory {
+        #address-cells = <1>;
+        #size-cells = <1>;
+        ranges;
+        ramoops@67e00000 {
+            compatible = "ramoops";
+            reg = <0x67e00000 0x200000>;
+            record-size = <0x40000>;
+            console-size = <0x100000>;
+        };
+    };
+    hdmi-connector {
+        compatible = "hdmi-connector";
+        type = "a";
+        port { hdmi_connector_in: endpoint { remote-endpoint = <&hdmi_out_con>; }; };
+    };
+    // No secure monitor was established by the USB helper. Start UP.
+    /delete-node/ psci;
+};
+&cpu0 { /delete-property/ enable-method; /delete-property/ operating-points-v2; };
+&cpu1 { status = "disabled"; };
+&cpu2 { status = "disabled"; };
+&cpu3 { status = "disabled"; };
+// Keep the DDR/helper clocks initially: do not assume EVB power rails or OPPs.
+&cru { /delete-property/ assigned-clocks; /delete-property/ assigned-clock-rates; };
+&usb_otg { dr_mode = "peripheral"; status = "okay"; };
+&u2phy0 { status = "okay"; };
+&u2phy0_otg { status = "okay"; };
+// Stock DTB enables all three internal host controllers; scan for USB Wi-Fi.
+// No guessed VBUS or WLAN power GPIO is driven in this first experiment.
+&u2phy0_host { status = "okay"; };
+&u2phy1 { status = "okay"; };
+&u2phy1_otg { status = "okay"; };
+&u2phy1_host { status = "okay"; };
+&usb_host0_ehci { status = "okay"; };
+&usb_host0_ohci { status = "okay"; };
+&usb_host1_ehci { status = "okay"; };
+&usb_host1_ohci { status = "okay"; };
+&usb_host2_ehci { status = "okay"; };
+&usb_host2_ohci { status = "okay"; };
+&display_subsystem { status = "okay"; };
+&vop { status = "okay"; };
+&vop_mmu { status = "okay"; };
+&hdmi { status = "okay"; };
+&hdmi_phy { status = "okay"; };
+&hdmi_out { hdmi_out_con: endpoint { remote-endpoint = <&hdmi_connector_in>; }; };
+&gpu { status = "okay"; };
+// SPI-NOR, MMC, SDIO, unknown power GPIOs and UART pinmux stay disabled.

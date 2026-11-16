@@ -1,0 +1,18 @@
+[package]
+name = "inspector"
+version = "0.1.0"
+description = "Sandbox Inspector: an example meow app that shows what its sandbox allows"
+edition.workspace = true
+rust-version.workspace = true
+license = "MIT OR Apache-2.0"
+publish.workspace = true
+
+# - meow-app (path)   MIT/Apache   SDK
+# - glow 0.18         MIT/Apache   GLES2 drawing
+# - ab_glyph 0.2      Apache-2.0   text rasterisation (system Noto Sans, read-only in the sandbox)
+# - libc 0.2          MIT/Apache   probes (sockets, open)
+[dependencies]
+meow-app = { path = "../../sdk", features = ["display", "osd"] }
+glow = "0.18"
+ab_glyph = { version = "0.2", default-features = false, features = ["std"] }
+libc = "0.2"

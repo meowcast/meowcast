@@ -1,0 +1,17 @@
+# Cloudflare static-assets headers for the meow store (../wrangler.jsonc).
+# Indexes change on every publish: short. App versions are immutable (a change needs a higher
+# version_code, so a new path). Assets are fetched with ?v=<sha256 prefix> by the dongle.
+/*
+  X-Content-Type-Options: nosniff
+/index.json
+  Cache-Control: public, max-age=60
+/repo.json
+  Cache-Control: public, max-age=60
+/assets.json
+  Cache-Control: public, max-age=60
+/assets.sig
+  Cache-Control: public, max-age=60
+/apps/*
+  Cache-Control: public, max-age=31536000, immutable
+/assets/*
+  Cache-Control: public, max-age=3600

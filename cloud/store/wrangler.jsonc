@@ -1,0 +1,13 @@
+{
+  // The meow store: everything the dongle downloads (apps, wallpaper, full fonts), as a
+  // static-assets Worker. Nothing here is trusted by the dongle: appd checks the signatures and
+  // hashes (README.md). Publish: sh deploy.sh (after ../../apps/build-apps.sh).
+  "$schema": "../relay/node_modules/wrangler/config-schema.json",
+  "name": "meowcast-store",
+  "compatibility_date": "2026-10-28",
+  "assets": {
+    "directory": "./www",
+    "html_handling": "none",
+    "not_found_handling": "none"
+  }
+}

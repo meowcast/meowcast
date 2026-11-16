@@ -1,0 +1,12 @@
+# Default target: the dongle. Host tools (appd keygen/pack) build with --target <host>.
+[build]
+target = "armv7-unknown-linux-gnueabihf"
+
+[target.armv7-unknown-linux-gnueabihf]
+linker = "arm-linux-gnueabihf-gcc"
+rustflags = [
+    "-C", "target-cpu=cortex-a7", "-C", "target-feature=+neon",
+    "-L", "native=/build/mesa-install/usr/lib",
+    "-C", "link-arg=-Wl,-rpath-link,/build/mesa-install/usr/lib",
+]
+# Offline builds add `--config .cargo/vendor.toml` (written by fetch-deps.sh).

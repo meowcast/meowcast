@@ -1,0 +1,27 @@
+// SPDX-License-Identifier: (GPL-2.0+ OR MIT)
+// LAB-ONLY additions on top of the perf profile (build: PROFILE=perf LAB=1).
+// Hands-off recovery: linux_entry.S (LAB_RECOVERY) sets the MaskROM flag in
+// GRF_OS_REG0 and pre-arms the watchdog, so a reboot, panic, soft lockup,
+// thermal-critical event or hard hang re-enters MaskROM and the host (lab.py)
+// reloads the RAM image. See LAB-RECOVERY.md.
+#include "rk3228a-miracast-perf.dts"
+/ {
+    model = "RK3228A Miracast perf-lab RAM diagnostic (LAB)";
+    // Unused-clock gating (dropping clk_ignore_unused pd_ignore_unused) works
+    // with the VIO H2P fix and gives -2.4 C idle, but it also turns off the
+    // pclk_ddrphy gate (enable count 1, hardware off: shared gate bit?) while
+    // DDR600 is marginal. Kept off until that is understood; variant DTB:
+    // output/variants/noignore.dtb.
+    chosen {
+        bootargs = "console=tty0 loglevel=4 printk.time=1 rdinit=/init panic=3 oops=panic softlockup_panic=1 hw_protection=reboot clk_ignore_unused pd_ignore_unused cpuidle.off=1 video=HDMI-A-1:1920x1080-16@60 vt.global_cursor_default=0 cma=16M";
+    };
+    // linux_entry.S copies GRF (0x67d00000) and CRU 0x000-0x13c (0x67d01000)
+    // here at handoff; rootfs lab-diff compares them with the live state.
+    // 1 MiB: an 8 KiB no-map region hung the kernel early (ARM32 section maps).
+    reserved-memory {
+        lab-snapshot@67d00000 {
+            reg = <0x67d00000 0x100000>;
+            no-map;
+        };
+    };
+};

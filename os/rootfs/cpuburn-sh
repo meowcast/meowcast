@@ -1,0 +1,6 @@
+#!/bin/sh
+# cpuburn-sh THREADS SECONDS: busy-loop THREADS processes for SECONDS.
+n=${1:-4}; t=${2:-60}; i=0
+while [ $i -lt $n ]; do timeout $t sh -c 'while :; do :; done' & i=$((i+1)); done
+wait
+echo CPUBURN_DONE threads=$n seconds=$t

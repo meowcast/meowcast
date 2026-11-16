@@ -1,0 +1,18 @@
+#!/bin/sh
+# Read the HDMI 2.0 sink's SCDC registers (I2C 0x54 on the HDMI DDC bus):
+# what the TV itself detects - clock, per-channel lock, scrambling, errors.
+# Read-only. Needs i2c-dev (perf profile).
+bus=
+for d in /sys/class/i2c-dev/i2c-*; do
+    grep -q -i hdmi "$d/name" 2>/dev/null && bus=${d##*-}
+done
+[ -n "$bus" ] || { echo 'SCDC no HDMI DDC i2c-dev bus' >&2; exit 1; }
+r() { i2cget -y "$bus" 0x54 "$1" 2>/dev/null || echo ERR; }
+f0=$(r 0x40)
+echo "SCDC bus=$bus sink_version=$(r 0x01) tmds_config=$(r 0x20) scrambler_status=$(r 0x21) status_flags0=$f0 status_flags1=$(r 0x41)"
+case "$f0" in 0x*)
+    v=$((f0))
+    echo "SCDC clock_detected=$((v & 1)) ch0_locked=$((v >> 1 & 1)) ch1_locked=$((v >> 2 & 1)) ch2_locked=$((v >> 3 & 1))" ;;
+esac
+echo "SCDC errors ch0=$(r 0x51)/$(r 0x50) ch1=$(r 0x53)/$(r 0x52) ch2=$(r 0x55)/$(r 0x54) checksum=$(r 0x56)"
+echo '  (tmds_config bit1 = 1/40 clock ratio, bit0 = scrambling enabled; error high byte bit7 = valid)'

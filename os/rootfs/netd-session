@@ -1,0 +1,63 @@
+#!/bin/sh
+# netd-session start|stop|restart|status: the network daemon (/usr/bin/meow-netd, part of the
+# appd binary) under a small supervisor, started by init after /data is mounted. A crash
+# restarts it after 2 s. Log: /run/netd.log (rotated at 256 KiB); wpa_supplicant logs in
+# /run/netd/. Its helpers (wpa_supplicant, udhcpd, udhcpc, dropbear, meow-tls) are stopped
+# with it: the new daemon starts its own. Development build from /opt: NETD=/opt/appd/bin/meow-netd netd-session restart
+NETD=${NETD:-/usr/bin/meow-netd}
+LOG=/run/netd.log
+
+stop_debug_sessions() {
+    # Include shells and forwarded connections that forked away from the listener.
+    if [ -w /sys/fs/cgroup/meow-debug/cgroup.kill ]; then
+        printf 1 > /sys/fs/cgroup/meow-debug/cgroup.kill
+    fi
+}
+
+running() {
+    [ -f /run/netd-session.pid ] && kill -0 "$(cat /run/netd-session.pid)" 2>/dev/null
+}
+
+case "$1" in
+start)
+    [ -x "$NETD" ] || { echo "NETD_SESSION no $NETD"; exit 1; }
+    running && { echo "NETD_SESSION already running"; exit 0; }
+    rm -f /run/netd.stop
+    (
+        while [ ! -e /run/netd.stop ]; do
+            [ -f "$LOG" ] && [ "$(wc -c < "$LOG")" -gt 262144 ] && mv "$LOG" "$LOG.1"
+            "$NETD" >>"$LOG" 2>&1
+            rc=$?
+            [ -e /run/netd.stop ] && break
+            echo "NETD_SESSION exit rc=$rc; restarting in 2 s" >>"$LOG"
+            stop_debug_sessions
+            killall wpa_supplicant udhcpd udhcpc dropbear meow-tls 2>/dev/null
+            sleep 2
+        done
+    ) </dev/null &
+    echo $! >/run/netd-session.pid
+    echo "NETD_SESSION started $NETD"
+    ;;
+stop)
+    touch /run/netd.stop
+    pid=$(pidof meow-netd)
+    [ -n "$pid" ] && kill $pid
+    i=0
+    while pidof meow-netd >/dev/null && [ $i -lt 5 ]; do sleep 1; i=$((i + 1)); done
+    stop_debug_sessions
+    killall wpa_supplicant udhcpd udhcpc dropbear meow-tls 2>/dev/null
+    rm -f /run/netd-session.pid
+    echo "NETD_SESSION stopped"
+    ;;
+restart)
+    "$0" stop
+    "$0" start
+    ;;
+status)
+    if running; then echo "NETD_SESSION running pid=$(pidof meow-netd)"; else echo "NETD_SESSION stopped"; fi
+    ;;
+*)
+    echo "usage: netd-session start|stop|restart|status"
+    exit 2
+    ;;
+esac

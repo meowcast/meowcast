@@ -1,0 +1,17 @@
+# The wallpapers of the meow store, in gallery order (prepare-wallpapers.py builds them).
+# A curated selection from KDE Plasma: https://github.com/KDE/plasma-workspace-wallpapers at
+# commit 373a32358b4ebee2a1defc6b75348e2b53cf2cfa (16:9 sources only; dark variants where there is one).
+# "default" is what a new device shows: keep it. TAB-separated:
+# id	title	author	licence	url	sha256
+default	Sub-Arctic	Krystian Zajdel	CC-BY-SA-4.0	https://raw.githubusercontent.com/KDE/plasma-workspace-wallpapers/373a32358b4ebee2a1defc6b75348e2b53cf2cfa/Sub-Arctic/contents/images_dark/5120x2880.png	a873db973eb75a362c7eba349cf517b05bb8a8fcd4250b45870bd3a682640139
+altai	Altai	Alesya Khoteeva	CC-BY-SA-4.0	https://raw.githubusercontent.com/KDE/plasma-workspace-wallpapers/373a32358b4ebee2a1defc6b75348e2b53cf2cfa/Altai/contents/images/5120x2880.png	43427a48cb43556a65ba583b3ebc98cfc89419c83723635543ff4c973c488eda
+mountain	Mountain	Andy Betts	CC-BY-SA-4.0	https://raw.githubusercontent.com/KDE/plasma-workspace-wallpapers/373a32358b4ebee2a1defc6b75348e2b53cf2cfa/Mountain/contents/images_dark/5120x2880.png	06ab7eb4a0a8dbf44c3e16be2d6f20de12d7a175c3e2dc2d7f7c365434770425
+volna	Volna	Nikita Babin	CC-BY-SA-4.0	https://raw.githubusercontent.com/KDE/plasma-workspace-wallpapers/373a32358b4ebee2a1defc6b75348e2b53cf2cfa/Volna/contents/images/5120x2880.jpg	abc30b4fc6f6a83b6156e6b59ac283c067de40af820aafac8ac7c4fd83a9607c
+nuvole	Nuvole	Krystian Zajdel	CC-BY-SA-4.0	https://raw.githubusercontent.com/KDE/plasma-workspace-wallpapers/373a32358b4ebee2a1defc6b75348e2b53cf2cfa/Nuvole/contents/images_dark/5120x2880.png	9450138065af5037305914b8510fe095613ac51afbd6ba2414d0d149b4bb9eac
+waterfall	Waterfall	Krystian Zajdel	CC-BY-SA-4.0	https://raw.githubusercontent.com/KDE/plasma-workspace-wallpapers/373a32358b4ebee2a1defc6b75348e2b53cf2cfa/Waterfall/contents/images_dark/5120x2880.png	20411fa71f9ec9f80bf1e2a500dd5df811248a652c2cb6401b00928317ee95a4
+honeywave	Honeywave	Ken Vermette	CC-BY-SA-4.0	https://raw.githubusercontent.com/KDE/plasma-workspace-wallpapers/373a32358b4ebee2a1defc6b75348e2b53cf2cfa/Honeywave/contents/images/5120x2880.jpg	e75adbd953e9b7dc8946223e7f1f2c4a9378496e7597198f65b095356995c7ad
+kokkini	Kokkini	Ken Vermette	LGPL-3.0	https://raw.githubusercontent.com/KDE/plasma-workspace-wallpapers/373a32358b4ebee2a1defc6b75348e2b53cf2cfa/Kokkini/contents/images/3840x2160.png	685c96addd540da6b51a57887e4dcf53b216e139654528c1b27bb47a359439a4
+milkyway	Milky Way	ruvkr	CC-BY-SA-4.0	https://raw.githubusercontent.com/KDE/plasma-workspace-wallpapers/373a32358b4ebee2a1defc6b75348e2b53cf2cfa/MilkyWay/contents/images/5120x2880.png	184016d87d669dd8a98e6b32c641918762020e3734568a706475d73211b7215a
+flow	Flow	Sandra Smukaste	CC-BY-SA-4.0	https://raw.githubusercontent.com/KDE/plasma-workspace-wallpapers/373a32358b4ebee2a1defc6b75348e2b53cf2cfa/Flow/contents/images_dark/5120x2880.jpg	ea051e4eff00309d2f4ae50db82d7b5f526f87f32167d50f124ecc67989f8c30
+scarlet-tree	Scarlet Tree	axo1otl	CC-BY-SA-4.0	https://raw.githubusercontent.com/KDE/plasma-workspace-wallpapers/373a32358b4ebee2a1defc6b75348e2b53cf2cfa/ScarletTree/contents/images_dark/5120x2880.png	23d8dffba81c387e28c9c8739ca01932a31660c2af91681f923b59c3427d412a
+safe-landing	Safe Landing	Louis Durrant	CC-BY-SA-4.0	https://raw.githubusercontent.com/KDE/plasma-workspace-wallpapers/373a32358b4ebee2a1defc6b75348e2b53cf2cfa/SafeLanding/contents/images/5120x2880.jpg	7341ff2532d1a13a2ba35f2a9219a2c6cb070446f1aae4ce9a3a981c3bedd32f

@@ -1,0 +1,16 @@
+[build]
+target = "armv7-unknown-linux-gnueabihf"
+
+[target.armv7-unknown-linux-gnueabihf]
+linker = "arm-linux-gnueabihf-gcc"
+# NEON is not in this target's defaults; the A7 has it (VFPv4 + NEON).
+rustflags = [
+    "-C", "target-cpu=cortex-a7", "-C", "target-feature=+neon",
+    # libgbm comes from the project's own Mesa build in the builder volume.
+    "-L", "native=/build/mesa-install/usr/lib",
+    # libEGL's own dependency (libgallium) resolves from the same directory.
+    "-C", "link-arg=-Wl,-rpath-link,/build/mesa-install/usr/lib",
+]
+
+# Offline builds add `--config .cargo/vendor.toml` (written by fetch-crates.sh),
+# which points crates-io at ./vendor.

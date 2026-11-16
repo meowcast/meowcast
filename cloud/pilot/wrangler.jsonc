@@ -1,0 +1,11 @@
+{
+  // The pilot web app on Cloudflare (static assets only), used from any network through the
+  // relay (../relay). Build + deploy: npm run deploy:cloud
+  "$schema": "../relay/node_modules/wrangler/config-schema.json",
+  "name": "meowcast-pilot",
+  "compatibility_date": "2026-10-28",
+  "assets": {
+    "directory": "./dist-cloud",
+    "not_found_handling": "single-page-application"
+  }
+}

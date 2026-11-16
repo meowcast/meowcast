@@ -1,0 +1,19 @@
+#!/bin/sh
+# ddrtest SECONDS: DRAM error rate at the current DDR setting. CPU pinned at
+# 816 MHz with thermal throttling suspended for the run (guard: memtest is
+# killed above 105 C; the 115 C hardware reset stays armed).
+P=/sys/devices/system/cpu/cpufreq/policy0; Z=/sys/class/thermal/thermal_zone0
+echo "DDRTEST dpll=$(cat /sys/kernel/debug/clk/dpll/clk_rate) vlogic=$(cat /sys/class/regulator/regulator.1/microvolts) start_temp=$(cat $Z/temp)"
+echo disabled > $Z/mode
+for c in /sys/class/thermal/cooling_device*/cur_state; do echo 0 > $c; done
+echo userspace > $P/scaling_governor; echo ${3:-816000} > $P/scaling_setspeed
+memtest 32 ${1:-60} ${2:-4} 2>/dev/null & m=$!
+max=0
+while kill -0 $m 2>/dev/null; do
+    t=$(cat $Z/temp); [ $t -gt $max ] && max=$t
+    [ $t -gt 105000 ] && { kill $m; echo "DDRTEST ABORT temp=$t"; }
+    sleep 1
+done
+wait $m
+echo enabled > $Z/mode; echo ondemand > $P/scaling_governor
+echo "DDRTEST max_temp=$max freq_now=$(cat $P/scaling_cur_freq)"

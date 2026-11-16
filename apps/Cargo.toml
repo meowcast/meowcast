@@ -1,0 +1,21 @@
+# meow apps: app manager (appd), system services, the Store app, the app SDK (meow-app), the
+# media library (meow-media) and an example app. Architecture and permission model: README.md.
+# Licence: GPL-3.0-or-later, except the two libraries that apps link, sdk/ and media/, which
+# are MIT OR Apache-2.0 so that an app may carry any licence. Every dependency is
+# GPLv3-compatible and recorded in the member Cargo.toml files.
+[workspace]
+resolver = "3"
+members = ["appd", "netd", "netsvc", "imagesvc", "sdk", "examples/inspector", "media", "store"]
+
+[workspace.package]
+edition = "2024"
+rust-version = "1.92"
+license = "GPL-3.0-or-later"
+publish = false
+
+[profile.release]
+lto = true
+panic = "abort"
+codegen-units = 1
+strip = true
+opt-level = "s"

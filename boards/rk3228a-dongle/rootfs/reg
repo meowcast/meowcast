@@ -1,0 +1,9 @@
+#!/bin/sh
+# reg ADDR [N]       read N words (allow-listed blocks only, see board/labreg.c)
+# reg ADDR=VALUE     write one word
+f=/sys/kernel/debug/labreg
+[ -e $f ] || { echo "REG_ERROR no $f (perf kernel only)"; exit 1; }
+case "$1" in
+*=*) echo "w ${1%%=*} ${1#*=}" > $f && echo "REG_WROTE $1" ;;
+*) echo "r $1 ${2:-1}" > $f && cat $f ;;
+esac

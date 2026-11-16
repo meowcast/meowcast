@@ -1,0 +1,55 @@
+#!/bin/sh
+# thermald-session start|stop|restart|status: the thermal supervisor (/usr/bin/meow-thermald,
+# ../thermald.c) under a small respawn loop, started by init before the UI and appd.
+# If the daemon dies it is back within 2 s; it continues a cooldown that was in progress
+# (/run/thermal/cooldown). Log: /run/thermal/log; emergencies also in /data/thermal.log.
+# Stopping it during a cooldown brings the video output, the UI and appd back first.
+# Development build from /opt: THERMALD=/opt/meow-thermald thermald-session restart
+# Test without heat: echo 109000 > /run/thermal/emul_temp (rm it to "cool down").
+THERMALD=${THERMALD:-/usr/bin/meow-thermald}
+
+running() {
+    [ -f /run/thermald-session.pid ] && kill -0 "$(cat /run/thermald-session.pid)" 2>/dev/null
+}
+
+case "$1" in
+start)
+    [ -x "$THERMALD" ] || { echo "THERMALD_SESSION no $THERMALD"; exit 1; }
+    running && { echo "THERMALD_SESSION already running"; exit 0; }
+    rm -f /run/thermald.stop
+    mkdir -p /run/thermal
+    (
+        while [ ! -e /run/thermald.stop ]; do
+            "$THERMALD" >>/run/thermal/daemon.err 2>&1
+            rc=$?
+            [ -e /run/thermald.stop ] && break
+            echo "THERMALD_SESSION exit rc=$rc; restarting in 2 s" >>/run/thermal/log
+            sleep 2
+        done
+    ) </dev/null &
+    echo $! >/run/thermald-session.pid
+    echo "THERMALD_SESSION started $THERMALD"
+    ;;
+stop)
+    touch /run/thermald.stop
+    pid=$(pidof "${THERMALD##*/}")
+    [ -n "$pid" ] && kill $pid
+    # In a cooldown it restores the output and starts the UI and appd before it leaves.
+    i=0
+    while pidof "${THERMALD##*/}" >/dev/null && [ $i -lt 60 ]; do sleep 1; i=$((i + 1)); done
+    rm -f /run/thermald-session.pid
+    echo "THERMALD_SESSION stopped"
+    ;;
+restart)
+    "$0" stop
+    "$0" start
+    ;;
+status)
+    if running; then echo "THERMALD_SESSION running pid=$(pidof "${THERMALD##*/}")"; else echo "THERMALD_SESSION stopped"; fi
+    cat /run/thermal/state 2>/dev/null
+    ;;
+*)
+    echo "usage: thermald-session start|stop|restart|status"
+    exit 2
+    ;;
+esac

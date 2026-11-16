@@ -1,0 +1,20 @@
+#!/bin/sh
+# Perf-lab only: show or set the RK3228 Inno HDMI PHY TMDS driver trims.
+#   hdmi-phy                      show PLL/driver state
+#   hdmi-phy TA PRE CLKD2 D1D0    set regs 0xef..0xf2 (two hex digits each):
+#     TA    slope boost   clk<<6|d2<<4|d1<<2|d0  (2 bits each)
+#     PRE   pre-emphasis  d2<<4|d1<<2|d0
+#     CLKD2 swing         clk<<4|d2              (4 bits each)
+#     D1D0  swing         d1<<4|d0
+# Upstream 594 MHz: aa 15 7a aa. Analog trims only; reverted by the next modeset.
+P=/sys/kernel/debug/regmap/12030000.hdmi-phy/registers
+if [ $# = 4 ]; then
+    for v in "$@"; do
+        case "$v" in [0-9a-f][0-9a-f]) ;; *) echo 'hex bytes like 7a expected' >&2; exit 2 ;; esac
+    done
+    echo "3bc $1" > $P && echo "3c0 $2" > $P && echo "3c4 $3" > $P && echo "3c8 $4" > $P || exit 1
+elif [ $# != 0 ]; then
+    echo 'usage: hdmi-phy [TA PRE CLKD2 D1D0]' >&2; exit 2
+fi
+echo "HDMI_PHY $(grep -E '^0*(380|384|3ac|3bc|3c0|3c4|3c8):' $P | tr '\n' ' ')"
+echo '  (380=0xe0 pll power, 384=0xe1 driver enable, 3ac=0xeb post-pll lock bit0, 3bc..3c8=0xef..0xf2 trims)'

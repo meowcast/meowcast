@@ -1,0 +1,14 @@
+#!/bin/sh
+# lab-diff: GRF/CRU registers that differ from the handoff snapshot taken by
+# linux_entry.S (helper state). Output: DIFF block+offset handoff -> live.
+for spec in grf:0x11000000:0x67d00000 cru:0x110e0000:0x67d01000; do
+    name=${spec%%:*}; rest=${spec#*:}; live=${rest%%:*}; snap=${rest#*:}
+    offs="0 1024 2048 3072"; n=256
+    [ $name = cru ] && { offs=0; n=80; }
+    for off in $offs; do
+        reg $(printf 0x%x $((live + off))) $n > /tmp/l.$$
+        reg $(printf 0x%x $((snap + off))) $n > /tmp/s.$$
+        awk -v n=$name -v o=$off 'NR==FNR { s[FNR]=$2; next } s[FNR] != $2 { printf "DIFF %s+%03x %s -> %s\n", n, o + (FNR-1)*4, s[FNR], $2 }' /tmp/s.$$ /tmp/l.$$
+    done
+done
+rm -f /tmp/l.$$ /tmp/s.$$

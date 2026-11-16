@@ -1,0 +1,114 @@
+#!/bin/sh
+# ui-session start|stop|restart|status: the TV UI (/usr/bin/miracast-ui) under a small
+# supervisor. init starts it right after the USB console, so the boot intro plays while the
+# rest of init runs and hands over to the home screen as soon as it is ready.
+#
+# The output mode is the user's choice in Settings (output= in /data/ui/settings), else the
+# kernel's video= argument. The kernel already drives HDMI in the video= mode, so in that mode
+# the UI takes over the screen without an HDMI re-sync (black gap on the TV).
+#   video=HDMI-A-1:1920x1080@60 -> 1080p60 (default)   video=HDMI-A-1:3840x2160@30 -> 4k30
+# Exit code 3 = the UI asks to be restarted (new resolution, Settings > Restart): at once,
+# with only the entrance cascade. A crash restarts it after 2 s, also without the intro; if a
+# new resolution was still waiting for confirmation, the crash reverts it (confirm= line).
+# For a development build from /opt: ui-session stop, then /opt/ui/run.sh (which does that).
+UI=/usr/bin/miracast-ui
+LOG=/run/ui.log
+SETTINGS=/data/ui/settings
+
+mode() {
+    m=$(sed -n 's/^output=//p' "$SETTINGS" 2>/dev/null | head -n 1)
+    case "$m" in 1080p60|4k30|720p60) echo "$m"; return ;; esac
+    case " $(cat /proc/cmdline) " in
+        *" video=HDMI-A-1:3840x2160@30"*) echo 4k30 ;;
+        *" video=HDMI-A-1:1280x720@60"*) echo 720p60 ;;
+        *) echo 1080p60 ;;
+    esac
+}
+
+# A crash while a new resolution waits for confirmation: go back to the previous one.
+revert_unconfirmed() {
+    prev=$(sed -n 's/^confirm=//p' "$SETTINGS" 2>/dev/null | head -n 1)
+    [ -n "$prev" ] || return 0
+    sed -e "s/^output=.*/output=$prev/" -e '/^confirm=/d' "$SETTINGS" > "$SETTINGS.new" && mv "$SETTINGS.new" "$SETTINGS"
+    echo "UI_SESSION crash with an unconfirmed resolution: back to $prev" >>"$LOG"
+}
+
+running() {
+    [ -f /run/ui-session.pid ] && kill -0 "$(cat /run/ui-session.pid)" 2>/dev/null
+}
+
+case "$1" in
+start)
+    [ -x "$UI" ] || { echo "UI_SESSION no $UI"; exit 1; }
+    running && { echo "UI_SESSION already running"; exit 0; }
+    # Thermal cooldown (meow-thermald): the video output is off and stays off until it ends.
+    [ -e /run/thermal/cooldown ] && { echo "UI_SESSION not started: thermal cooldown (/run/thermal/log)"; exit 0; }
+    rm -f /run/ui.stop
+    (
+        # UI_SESSION_INTRO=entrance: no boot intro on this start (after a thermal cooldown).
+        intro=${UI_SESSION_INTRO:-1}
+        # ui.synctest on the kernel command line: uptime counter instead of the UI, to
+        # measure how long the TV takes to show a picture (sets UI_TV_SYNC_MS).
+        case " $(cat /proc/cmdline) " in *" ui.synctest "*) export UI_SYNC_TEST=1 ;; esac
+        # ui.tvsync=MS: how long this TV takes to show a picture after the HDMI signal
+        # starts (default 3700, measured on the test TV with ui.synctest); the boot intro
+        # waits for it. 0 = start at once.
+        for a in $(cat /proc/cmdline); do
+            case "$a" in ui.tvsync=*) export UI_TV_SYNC_MS="${a#ui.tvsync=}" ;; esac
+        done
+        # At boot, init mounts /data right after starting us: wait for it (at most 2.5 s;
+        # the intro waits for the TV anyway), so the saved resolution applies from the start.
+        i=0
+        while ! grep -q " /data " /proc/mounts && [ $i -lt 25 ]; do usleep 100000; i=$((i + 1)); done
+        while [ ! -e /run/ui.stop ]; do
+            UI_OUTPUT=$(mode) UI_FONTS=/usr/share/fonts/noto UI_INTRO=$intro UI_STATS=0 \
+                "$UI" >>"$LOG" 2>&1
+            rc=$?
+            [ -e /run/ui.stop ] && break
+            intro=entrance
+            export UI_TV_SYNC_MS=0
+            if [ $rc -eq 3 ]; then
+                echo "UI_SESSION restart requested; output=$(mode)" >>"$LOG"
+                continue
+            fi
+            echo "UI_SESSION exit rc=$rc; restarting in 2 s" >>"$LOG"
+            revert_unconfirmed
+            sleep 2
+        done
+    ) </dev/null &
+    echo $! >/run/ui-session.pid
+    echo "UI_SESSION started"
+    ;;
+stop)
+    sup=$(cat /run/ui-session.pid 2>/dev/null)
+    touch /run/ui.stop
+    # Until the launcher AND its supervisor loop are gone (5 s at most). The loop may be
+    # about to start a launcher (it only looks at /run/ui.stop between runs), and `start`
+    # removes that file: a loop left behind would carry on next to the new one, two
+    # launchers fighting over the screen and one of them restarting every 3 s.
+    i=0
+    while [ $i -lt 50 ]; do
+        pid=$(pidof miracast-ui)
+        [ -n "$pid" ] && kill $pid 2>/dev/null
+        if [ -z "$pid" ]; then
+            [ -n "$sup" ] && kill -0 "$sup" 2>/dev/null || break
+        fi
+        usleep 100000
+        i=$((i + 1))
+    done
+    [ -n "$sup" ] && kill -0 "$sup" 2>/dev/null && kill "$sup" 2>/dev/null
+    rm -f /run/ui-session.pid
+    echo "UI_SESSION stopped"
+    ;;
+restart)
+    "$0" stop
+    "$0" start
+    ;;
+status)
+    if running; then echo "UI_SESSION running output=$(mode) pid=$(pidof miracast-ui)"; else echo "UI_SESSION stopped"; fi
+    ;;
+*)
+    echo "usage: ui-session start|stop|restart|status"
+    exit 2
+    ;;
+esac

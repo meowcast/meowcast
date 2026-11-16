@@ -1,0 +1,139 @@
+<!doctype html>
+<!-- The dongle's own page (meow-netd serves it from /usr/share/pilot). On the TV's setup network
+     it is the captive portal: choose the home Wi-Fi, send the password. From the home network it
+     links to the pilot app on Cloudflare. No framework: it lives in the firmware image. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0f1221">
+<title>MEOW setup</title>
+<style>
+:root{--bg:#0f1221;--card:#171a2e;--fg:#f4f6fb;--mute:#9aa1bd;--line:#2c3150;--pri:#3daee9;--bad:#fca5a5;--ok:#34d399;color-scheme:dark}
+*{box-sizing:border-box}
+body{margin:0;min-height:100vh;background:radial-gradient(120% 80% at 30% 0%,#2a1f45 0%,#151128 45%,var(--bg) 100%) fixed;color:var(--fg);font:16px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:28rem;margin:0 auto;padding:max(1rem,env(safe-area-inset-top)) 1.25rem 2rem}
+h1{font-weight:300;font-size:1.3rem;margin:.6rem 0 .3rem}
+p{color:var(--mute);font-size:.92rem;margin:.3rem 0 1rem}
+.card{background:var(--card);border:1px solid var(--line);border-radius:1.25rem;overflow:hidden}
+.row{display:flex;align-items:center;gap:.75rem;width:100%;padding:.9rem 1rem;background:none;border:0;border-top:1px solid var(--line);color:var(--fg);font:inherit;text-align:left}
+.row:first-child{border-top:0}.row:active{background:#262a44}
+.row span{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dim{color:var(--mute)}
+input{width:100%;height:3rem;border-radius:.8rem;border:1px solid var(--line);background:var(--card);color:var(--fg);font:inherit;padding:0 1rem;margin:.3rem 0 1rem}
+input:focus{outline:0;border-color:var(--pri)}
+button.main{width:100%;height:3.4rem;border:0;border-radius:1rem;background:var(--pri);color:#06121b;font:600 1rem system-ui,sans-serif}
+button.main:disabled{opacity:.4}
+button.link{background:none;border:0;color:var(--pri);font:inherit;padding:.8rem 0}
+a.main{display:block;text-align:center;line-height:3.4rem;text-decoration:none;border-radius:1rem;background:var(--pri);color:#06121b;font-weight:600}
+.err{color:var(--bad)}
+.spin{width:2.6rem;height:2.6rem;border:3px solid var(--line);border-top-color:var(--pri);border-radius:50%;animation:s 1s linear infinite;margin:3rem auto 1rem}
+@keyframes s{to{transform:rotate(1turn)}}
+.center{text-align:center}
+.ok{font-size:2.4rem;color:var(--ok)}
+</style>
+</head>
+<body>
+<main id="app"><div class="spin"></div></main>
+<script>
+"use strict";
+const app = document.getElementById('app');
+let info = null, nets = null, scanErr = false, chosen = null, open = false;
+const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const bars = (s) => s >= -55 ? '▂▄▆█' : s >= -67 ? '▂▄▆' : s >= -78 ? '▂▄' : '▂';
+const ERR = {wrong_password:'The password is not right.', not_found:'The network is out of range.', no_ip:'The network did not give the TV an address.', timeout:'The TV could not connect in time.', busy:'The TV is already connecting. Try again in a moment.', bad_password:'Wi-Fi passwords have 8 to 63 characters.', unauthorized:'Join the TV\'s Wi-Fi first.'};
+
+async function api(path, body, ms) {
+  const c = new AbortController(); const t = setTimeout(() => c.abort(), ms || 10000);
+  try {
+    const r = await fetch(path, {method: body ? 'POST' : 'GET', headers: {'Content-Type': 'application/json'}, body: body ? JSON.stringify(body) : undefined, signal: c.signal, cache: 'no-store'});
+    return await r.json();
+  } finally { clearTimeout(t); }
+}
+
+function pilotLink() {
+  const c = info && info.cloud;
+  return c && c.app && c.id ? `${c.app}/?d=${c.id}` : '';
+}
+
+function render(html) { app.innerHTML = html; }
+
+function home() {
+  // Reached from the home network (not the setup network): hand over to the pilot app.
+  const link = pilotLink();
+  render(`<h1>MEOW</h1><p>${info.wifi.state === 'connected' ? `The TV is on ${esc(info.wifi.ssid)}.` : 'The TV is not on Wi-Fi yet.'}</p>` +
+    (link ? `<a class="main" href="${esc(link)}">Open the MEOW Pilot</a><p>To pair, use the code shown on the TV (Settings › Wi-Fi › Pair a phone).</p>`
+          : `<p>The pilot app is not configured on this TV.</p>`));
+}
+
+function list() {
+  let rows = '';
+  if (nets === null && !scanErr) rows = `<div class="row dim">Looking for networks…</div>`;
+  if (scanErr) rows = `<div class="row err">The TV could not search for networks.</div>`;
+  if (nets && !nets.length) rows = `<div class="row dim">No networks found.</div>`;
+  (nets || []).forEach((n, i) => { rows += `<button class="row" data-i="${i}"><b class="dim">${bars(n.signal)}</b><span>${esc(n.ssid)}</span>${n.secure ? '🔒' : ''}</button>`; });
+  rows += `<button class="row dim" data-i="-1"><span>Other network…</span></button>`;
+  render(`<h1>Choose your Wi-Fi</h1><p>You are connected to ${esc(info.setup.ssid || 'the TV')}. Pick the network the TV should use.</p><div class="card">${rows}</div><div class="center"><button class="link" id="again">Search again</button></div>`);
+  app.querySelectorAll('[data-i]').forEach((b) => b.onclick = () => { const i = +b.dataset.i; chosen = i < 0 ? null : nets[i]; if (chosen && !chosen.secure) join(chosen.ssid, ''); else password(); });
+  document.getElementById('again').onclick = () => scan(true);
+}
+
+function password(msg) {
+  render(`<h1>${chosen ? esc(chosen.ssid) : 'Other network'}</h1>` + (msg ? `<p class="err">${esc(msg)}</p>` : '') +
+    `<form id="f">${chosen ? '' : '<label class="dim">Network name<input id="ssid" maxlength="32" autocapitalize="none" autocorrect="off" spellcheck="false"></label>'}` +
+    `<label class="dim">Password${chosen ? '' : ' (empty for an open network)'}<input id="psk" type="password" maxlength="64" autocapitalize="none" autocorrect="off" spellcheck="false" autocomplete="current-password"></label>` +
+    `<label class="dim"><input type="checkbox" id="show" style="width:auto;height:auto;margin:0 .5rem 1rem 0">Show password</label>` +
+    `<button class="main" type="submit">Connect</button></form><div class="center"><button class="link" id="back">Back to the list</button></div>`);
+  const psk = document.getElementById('psk');
+  document.getElementById('show').onchange = (e) => psk.type = e.target.checked ? 'text' : 'password';
+  document.getElementById('back').onclick = list;
+  document.getElementById('f').onsubmit = (e) => {
+    e.preventDefault();
+    const ssid = chosen ? chosen.ssid : document.getElementById('ssid').value;
+    const p = psk.value;
+    if (!ssid) return;
+    if (p && (p.length < 8 || p.length > 64)) return password(ERR.bad_password);
+    if (!p && chosen && chosen.secure) return password('Enter the password.');
+    join(ssid, p);
+  };
+  (chosen ? psk : document.getElementById('ssid')).focus();
+}
+
+function done(ssid) {
+  render(`<div class="center"><div class="ok">✓</div><h1>The TV is on ${esc(ssid)}</h1></div><div class="card" style="padding:1rem">Now <b>scan the new code on the TV</b> with your phone's camera. It opens the MEOW Pilot, which then works from any network.</div><p>You can close this page; your phone returns to its usual Wi-Fi by itself.</p>`);
+}
+
+async function join(ssid, psk) {
+  render(`<div class="spin"></div><h1 class="center">Connecting the TV to ${esc(ssid)}…</h1><p class="center">This takes up to half a minute. Keep this page open.</p>`);
+  try {
+    const r = await api('/api/wifi/join', {ssid, psk}, 90000);
+    if (r.ok) return done(r.ssid);
+    return password(ERR[r.error] || 'The TV could not connect.');
+  } catch (e) {
+    // The setup network may hop to the home network's channel: ask until it is clear.
+    for (let i = 0; i < 30; i++) {
+      await new Promise((r) => setTimeout(r, 2000));
+      try {
+        const n = await api('/api/info', null, 4000);
+        if (n.wifi.state === 'connected' && n.wifi.ssid === ssid) return done(ssid);
+        if (n.wifi.error) return password(n.wifi.error);
+      } catch (_) { /* still away */ }
+    }
+    render(`<h1>Your phone left the TV's network</h1><p>If the TV now shows a new code, it is on ${esc(ssid)}: scan the code with your camera. Otherwise join the TV's network again and retry.</p>`);
+  }
+}
+
+async function scan(fresh) {
+  nets = null; scanErr = false; if (info.via === 'setup') list();
+  try { const r = await api('/api/wifi/scan' + (fresh ? '?fresh=1' : ''), null, 15000); nets = r.ok ? r.networks : []; scanErr = !r.ok; }
+  catch (e) { scanErr = true; }
+  list();
+}
+
+(async () => {
+  try { info = await api('/api/info'); } catch (e) { return render('<h1>MEOW</h1><p class="err">The TV does not answer.</p>'); }
+  if (info.via === 'setup') scan(false); else home();
+})();
+</script>
+</body>
+</html>

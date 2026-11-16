@@ -1,0 +1,2 @@
+# Embedded in assets.json (base64) by `appd assets`: not served on their own.
+*.preview

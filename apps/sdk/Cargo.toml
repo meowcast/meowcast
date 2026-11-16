@@ -1,0 +1,32 @@
+[package]
+name = "meow-app"
+version = "0.1.0"
+description = "SDK for meow apps: broker connection, input, storage sync, brokered display (KMS/GBM/EGL/GLES2)"
+edition.workspace = true
+rust-version.workspace = true
+license = "MIT OR Apache-2.0"
+publish.workspace = true
+
+# - libc 0.2          MIT/Apache   SCM_RIGHTS, poll
+# - drm 0.14          MIT          KMS on the brokered DRM master fd       (feature "display")
+# - gbm 0.18          MIT          scanout buffers                         (feature "display")
+# - khronos-egl 6     MIT/Apache   EGL on GBM, links Mesa libEGL           (feature "display")
+# - glow 0.18         MIT/Apache   OpenGL ES 2.0                           (feature "display")
+# - ab_glyph 0.2      Apache-2.0   the number on the volume pop-up         (feature "osd")
+[dependencies]
+libc = "0.2"
+drm = { version = "0.14", optional = true }
+gbm = { version = "0.18", default-features = false, features = ["drm-support"], optional = true }
+khronos-egl = { version = "6", features = ["static", "no-pkg-config"], optional = true }
+glow = { version = "0.18", optional = true }
+ab_glyph = { version = "0.2", default-features = false, features = ["std"], optional = true }
+
+[features]
+default = []
+display = ["dep:drm", "dep:gbm", "dep:khronos-egl", "dep:glow"]
+# The volume pop-up's renderer (osd.rs). With "display", `Display::present` draws it.
+osd = ["dep:ab_glyph"]
+
+[[example]]
+name = "osd_preview"
+required-features = ["osd"]

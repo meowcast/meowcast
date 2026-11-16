@@ -1,0 +1,17 @@
+[package]
+name = "store"
+version = "0.1.0"
+description = "Store for meow: browse, install and remove apps, and choose the repositories they come from"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+# Dependencies (licences, all GPLv3-compatible):
+# - meow-app (path)     GPL-3.0+     SDK: broker connection, keys, the store requests, the volume pop-up ("osd")
+# - meow-media (path)   GPL-3.0+     the canvas the screens are drawn on and the display's UI plane
+# - ab_glyph 0.2        Apache-2.0   UI text, as the launcher
+[dependencies]
+meow-app = { path = "../sdk", features = ["osd"] }
+meow-media = { path = "../media" }
+ab_glyph = { version = "0.2", default-features = false, features = ["std"] }

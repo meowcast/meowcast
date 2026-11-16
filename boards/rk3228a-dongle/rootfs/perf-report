@@ -1,0 +1,28 @@
+#!/bin/sh
+# Clock, DDR, temperature and display-pipeline state relevant to GPU throughput.
+# (This BusyBox has shell arithmetic disabled; awk does the unit conversion.)
+c=/sys/kernel/debug/clk
+mhz() { awk '{printf "%.1f", $1/1000000}' "$1"; }
+echo '--- clocks ---'
+for n in armclk dpll cpll gpll aclk_gpu_pre aclk_gpu aclk_vop_pre aclk_vop dclk_vop hdmiphy usb480m aclk_peri aclk_cpu; do
+    [ -r "$c/$n/clk_rate" ] && echo "$n=$(mhz "$c/$n/clk_rate")MHz parent=$(cat "$c/$n/clk_parent" 2>/dev/null)"
+done
+# DDR3 clock is half the DPLL rate on RK322x (DPLL = 2 x DDR clock).
+[ -r "$c/dpll/clk_rate" ] && awk '{printf "DDR3_CLOCK_ESTIMATE=%.0fMHz\n", $1/2000000}' "$c/dpll/clk_rate"
+[ -w "$c/aclk_gpu_pre/clk_rate" ] && echo 'CLK_DEBUGFS=writable' || echo 'CLK_DEBUGFS=read-only'
+echo '--- temperature ---'
+for z in /sys/class/thermal/thermal_zone*; do
+    [ -r "$z/temp" ] && echo "$(cat "$z/type") $(awk '{printf "%.1f", $1/1000}' "$z/temp")C"
+done
+df=/sys/class/devfreq/20000000.gpu
+[ -d $df ] && echo "GPU_DVFS governor=$(cat $df/governor) cur=$(cat $df/cur_freq) max=$(cat $df/max_freq) available=$(cat $df/available_frequencies)"
+cf=/sys/devices/system/cpu/cpu0/cpufreq
+[ -d $cf ] && echo "CPU_DVFS governor=$(cat $cf/scaling_governor) cur=$(cat $cf/scaling_cur_freq)kHz available=$(cat $cf/scaling_available_frequencies)"
+for cd in /sys/class/thermal/cooling_device*; do
+    [ -r "$cd/type" ] && echo "COOLING $(cat $cd/type) state=$(cat $cd/cur_state)/$(cat $cd/max_state)"
+done
+grep . /sys/class/regulator/*/microvolts 2>/dev/null | sed 's/^/REGULATOR /'
+echo '--- memory ---'
+grep -E 'MemTotal|MemAvailable|CmaTotal|CmaFree' /proc/meminfo
+echo '--- recent display/GPU kernel messages ---'
+dmesg | grep -i -E 'lima|vop|iommu|hdmi|thermal|tsadc|underflow|fault|timeout' | tail -n 12

@@ -1,0 +1,22 @@
+#!/bin/sh
+# regab ADDR VAL_A VAL_B SECONDS CYCLES [LOAD]: alternate a register between two
+# values (A,B,A,B,...) and log each phase's mean temperature over its last 60 s.
+# LOAD (optional) is a command run in the background for the whole test.
+addr=$1; va=$2; vb=$3; secs=${4:-240}; cyc=${5:-2}; load=$6
+[ -n "$load" ] && { sh -c "$load" >/dev/null 2>&1 & lp=$!; }
+i=0
+while [ $i -lt $cyc ]; do
+    for v in $va $vb; do
+        reg $addr=$v >/dev/null
+        t0=$(cut -d. -f1 /proc/uptime); sum=0; n=0
+        while [ $(( $(cut -d. -f1 /proc/uptime) - t0 )) -lt $secs ]; do
+            t=$(cat /sys/class/thermal/thermal_zone0/temp)
+            [ $(( $(cut -d. -f1 /proc/uptime) - t0 )) -ge $((secs - 60)) ] && { sum=$((sum + t)); n=$((n + 1)); }
+            sleep 5
+        done
+        echo "REGAB $addr=$v mean60=$((sum / n)) cpu=$(cat /sys/devices/system/cpu/cpufreq/policy0/scaling_cur_freq) gpu=$(cat /sys/class/devfreq/20000000.gpu/cur_freq)"
+    done
+    i=$((i + 1))
+done
+[ -n "$lp" ] && kill $lp 2>/dev/null
+echo REGAB_DONE

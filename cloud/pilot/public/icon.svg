@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <defs>
+    <radialGradient id="bg" cx="30%" cy="0%" r="120%">
+      <stop offset="0" stop-color="#2a1f45"/>
+      <stop offset="0.45" stop-color="#151128"/>
+      <stop offset="1" stop-color="#0f1221"/>
+    </radialGradient>
+  </defs>
+  <rect width="512" height="512" fill="url(#bg)"/>
+  <!-- A remote's ring with a cat's ears: the navigation pad of the pilot. -->
+  <g fill="none" stroke="#3daee9" stroke-width="20" stroke-linejoin="round" stroke-linecap="round">
+    <path d="M158 196 L150 112 L226 150"/>
+    <path d="M354 196 L362 112 L286 150"/>
+    <circle cx="256" cy="272" r="128"/>
+  </g>
+  <circle cx="256" cy="272" r="40" fill="#3daee9"/>
+  <g fill="none" stroke="#f4f6fb" stroke-opacity="0.85" stroke-width="14" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M238 196 L256 178 L274 196"/>
+    <path d="M238 348 L256 366 L274 348"/>
+    <path d="M180 254 L162 272 L180 290"/>
+    <path d="M332 254 L350 272 L332 290"/>
+  </g>
+</svg>

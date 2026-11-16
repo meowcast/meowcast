@@ -1,0 +1,16 @@
+{
+  "id": "dev.meow.store",
+  "name": "Store",
+  "summary": "Get apps and choose where they come from",
+  "version": "0.1.0",
+  "version_code": 1,
+  "exec": "bin/store",
+  "publisher": "meow",
+  "permissions": [
+    { "name": "display" },
+    { "name": "input" },
+    { "name": "manage-apps", "reason": "Shows the apps of your repositories, installs and removes them, and keeps the list of repositories" }
+  ],
+  "resources": { "memory_mb": 64, "tmp_mb": 2, "pids": 8, "cpu_weight": 200 },
+  "appearance": { "glyph": "apps", "tint": "#141a2a", "badge": ["#7c8cff", "#4a4fd8"], "shape": "circle" }
+}

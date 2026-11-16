@@ -1,0 +1,36 @@
+#!/bin/sh
+# clk-gate-unused [-v]: switch off the clocks of SoC blocks this board never uses.
+#
+# The kernel boots with clk_ignore_unused (a boot without it also gates the DDR PHY's APB
+# clock through a shared gate bit, see board/rk3228a-miracast-perf-lab.dts), so every clock the
+# boot ROM and loader left running keeps running: Ethernet MAC and PHY (300 MHz), crypto
+# (300 MHz), SD/SDIO/eMMC/NAND, the transport-stream input, RGA, IEP, the HDCP block, the
+# Hantro VPU's bus clocks, S/PDIF, I2S1/2, the three unused USB host ports, the UARTs, I2C,
+# SIM, eFuse, the video DAC PHY. None of them has a user here: no driver is bound, or (VPU,
+# HDCP) the driver takes its clocks itself when it runs, which still works afterwards.
+# Measured 15 Nov, idle home screen at 1080p60: 86.8 -> 84.4 C (two A/B cycles of 120 s).
+#
+# How: a clock with enable count 0 that still runs is taken and dropped once through the clk
+# debugfs (CLOCK_ALLOW_WRITE_DEBUGFS, perf profile); the drop gates it in hardware, and its
+# parents when nothing else uses them. A named list on purpose: bus (NoC) clocks, timers,
+# GRF/CRU/SGRF, the DDR clocks, JTAG and everything critical are not in it. Clocks that have
+# a user by now (count > 0) are left alone. Safe to run again.
+c=/sys/kernel/debug/clk
+[ -w $c/sclk_crypto/clk_prepare_enable ] || { echo "CLK_GATE no writable clk debugfs: nothing done"; exit 0; }
+n=0
+for k in sclk_mac_tx sclk_mac_rx sclk_mac_ref sclk_mac_refout sclk_macphy sclk_gmac_out aclk_gmac pclk_gmac \
+    sclk_crypto hclk_crypto_slv hclk_crypto_mst \
+    sclk_sdio sclk_sdmmc sclk_emmc hclk_sdio hclk_sdmmc hclk_emmc sclk_nandc hclk_nandc \
+    sclk_tsp hclk_tsp sclk_rga aclk_rga hclk_rga sclk_hdcp aclk_hdcp pclk_hdcp hclk_hdcp_mmu \
+    aclk_iep hclk_iep aclk_vpu hclk_vpu \
+    sclk_spdif hclk_spdif_8ch sclk_i2s1 sclk_i2s2 hclk_i2s1_8ch hclk_i2s2_2ch \
+    hclk_host0 hclk_host1 hclk_host2 sclk_otgphy1 pclk_vdacphy pclk_sim sclk_wifi \
+    sclk_uart0 sclk_uart1 sclk_uart2 pclk_uart0 pclk_uart1 pclk_uart2 \
+    pclk_i2c0 pclk_i2c1 pclk_i2c2 pclk_i2c3 pclk_efuse_256 pclk_efuse_1024; do
+    f=$c/$k/clk_prepare_enable
+    [ -e $f ] || { echo "CLK_GATE no clock $k"; continue; }
+    [ "$(cat $c/$k/clk_enable_count)" = 0 ] || { [ "$1" = -v ] && echo "CLK_GATE $k in use: left alone"; continue; }
+    echo 1 > $f && echo 0 > $f && n=$((n + 1))
+    [ "$1" = -v ] && echo "CLK_GATE $k off"
+done
+echo "CLK_GATE $n clocks gated"

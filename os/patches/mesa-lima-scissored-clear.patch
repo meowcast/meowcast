@@ -1,0 +1,173 @@
+diff -ru a/src/gallium/drivers/lima/lima_draw.c b/src/gallium/drivers/lima/lima_draw.c
+--- a/src/gallium/drivers/lima/lima_draw.c	2026-11-11 22:45:04
++++ b/src/gallium/drivers/lima/lima_draw.c	2026-11-11 22:45:36
+@@ -35,6 +35,7 @@
+ #include "util/u_prim.h"
+ #include "util/u_vbuf.h"
+ #include "util/hash_table.h"
++#include "util/u_blitter.h"
+ 
+ #include "lima_context.h"
+ #include "lima_pack.h"
+@@ -147,18 +148,73 @@
+    job->resolve |= buffers;
+ }
+ 
++static bool
++lima_scissor_tile_aligned(const struct pipe_scissor_state *s,
++                          unsigned width, unsigned height)
++{
++   return !(s->minx & 0xf) && !(s->miny & 0xf) &&
++          (!(s->maxx & 0xf) || s->maxx >= width) &&
++          (!(s->maxy & 0xf) || s->maxy >= height);
++}
++
++/* Scissored clear that is not tile aligned: the per-tile clear value would also
++ * hit pixels outside the scissor, so draw a quad instead (what the state tracker
++ * does when clear_scissored is not supported). */
+ static void
++lima_clear_with_quad(struct lima_context *ctx, unsigned buffers,
++                     const struct pipe_scissor_state *s,
++                     const union pipe_color_union *color, double depth,
++                     unsigned stencil)
++{
++   struct pipe_framebuffer_state *fb = &ctx->framebuffer.base;
++   unsigned w = s->maxx - s->minx, h = s->maxy - s->miny;
++
++   if ((buffers & PIPE_CLEAR_COLOR0) && fb->nr_cbufs && fb->cbufs[0].texture) {
++      lima_util_blitter_save_states(ctx);
++      util_blitter_clear_render_target(ctx->blitter, &fb->cbufs[0], color,
++                                       s->minx, s->miny, w, h);
++   }
++   if ((buffers & PIPE_CLEAR_DEPTHSTENCIL) && fb->zsbuf.texture) {
++      lima_util_blitter_save_states(ctx);
++      util_blitter_clear_depth_stencil(ctx->blitter, &fb->zsbuf,
++                                       buffers & PIPE_CLEAR_DEPTHSTENCIL,
++                                       depth, stencil, s->minx, s->miny, w, h);
++   }
++}
++
++static void
+ lima_clear(struct pipe_context *pctx, unsigned buffers,
+            uint32_t color_clear_mask, uint8_t stencil_clear_mask,
+            const struct pipe_scissor_state *scissor_state,
+            const union pipe_color_union *color, double depth, unsigned stencil)
+ {
+    struct lima_context *ctx = lima_context(pctx);
++   unsigned fb_w = ctx->framebuffer.base.width;
++   unsigned fb_h = ctx->framebuffer.base.height;
++   struct pipe_scissor_state rect = { 0, 0, fb_w, fb_h };
++
++   if (scissor_state) {
++      rect.minx = MIN2(scissor_state->minx, fb_w);
++      rect.miny = MIN2(scissor_state->miny, fb_h);
++      rect.maxx = MIN2(scissor_state->maxx, fb_w);
++      rect.maxy = MIN2(scissor_state->maxy, fb_h);
++      if (rect.minx >= rect.maxx || rect.miny >= rect.maxy)
++         return;
++      if (!lima_scissor_tile_aligned(&rect, fb_w, fb_h)) {
++         lima_clear_with_quad(ctx, buffers, &rect, color, depth, stencil);
++         return;
++      }
++   }
++   bool partial = rect.minx > 0 || rect.miny > 0 ||
++                  rect.maxx < fb_w || rect.maxy < fb_h;
++
+    struct lima_job *job = lima_job_get(ctx);
+ 
+    /* flush if this job already contains any draw, otherwise multi clear can be
+-    * combined into a single job */
+-   if (lima_job_has_draw_pending(job)) {
++    * combined into a single job. A job has a single per-tile clear value and
++    * one tile range, so partial clears never combine with other clears. */
++   if (lima_job_has_draw_pending(job) || job->has_clear_rect ||
++       (partial && job->clear.buffers)) {
+       lima_do_job(job);
+       job = lima_job_get(ctx);
+    }
+@@ -204,8 +260,13 @@
+    ctx->dirty |= LIMA_CONTEXT_DIRTY_CLEAR;
+ 
+    lima_damage_rect_union(&job->damage_rect,
+-                          0, ctx->framebuffer.base.width,
+-                          0, ctx->framebuffer.base.height);
++                          rect.minx, rect.maxx, rect.miny, rect.maxy);
++   if (partial) {
++      /* Only the tiles inside rect are processed; they start from the clear
++       * value, so no reload is needed (reload flags were dropped above). */
++      job->clear_rect = rect;
++      job->has_clear_rect = true;
++   }
+ }
+ 
+ enum lima_attrib_type {
+@@ -1186,6 +1247,18 @@
+    lima_clip_scissor_to_viewport(ctx);
+    if (lima_is_scissor_zero(ctx))
+       return;
++
++   /* After a partial (scissored) clear this job only covers the cleared tiles and
++    * does not reload them. A draw reaching outside needs the old contents there:
++    * submit the job first; the next job reloads as usual. */
++   {
++      struct lima_job *cur = lima_job_get(ctx);
++      struct pipe_scissor_state *cs = &ctx->clipped_scissor;
++      if (cur->has_clear_rect &&
++          (cs->minx < cur->clear_rect.minx || cs->maxx > cur->clear_rect.maxx ||
++           cs->miny < cur->clear_rect.miny || cs->maxy > cur->clear_rect.maxy))
++         lima_do_job(cur);
++   }
+ 
+    /* extend the viewport in case of line draws with a line_width > 1.0f,
+     * otherwise use the original values */
+diff -ru a/src/gallium/drivers/lima/lima_job.h b/src/gallium/drivers/lima/lima_job.h
+--- a/src/gallium/drivers/lima/lima_job.h	2026-11-11 22:45:04
++++ b/src/gallium/drivers/lima/lima_job.h	2026-11-11 22:45:36
+@@ -82,6 +82,11 @@
+ 
+    struct pipe_scissor_state damage_rect;
+ 
++   /* Set by a tile-aligned scissored clear: the job's tiles start from the clear
++    * value instead of being reloaded, so every draw must stay inside this rect. */
++   struct pipe_scissor_state clear_rect;
++   bool has_clear_rect;
++
+    struct lima_job_clear clear;
+ 
+    struct lima_job_fb_info fb;
+diff -ru a/src/gallium/drivers/lima/lima_resource.c b/src/gallium/drivers/lima/lima_resource.c
+--- a/src/gallium/drivers/lima/lima_resource.c	2026-11-11 22:45:04
++++ b/src/gallium/drivers/lima/lima_resource.c	2026-11-11 22:45:36
+@@ -787,7 +787,7 @@
+    slab_free(&ctx->transfer_pool, trans);
+ }
+ 
+-static void
++void
+ lima_util_blitter_save_states(struct lima_context *ctx)
+ {
+    util_blitter_save_blend(ctx->blitter, (void *)ctx->blend);
+diff -ru a/src/gallium/drivers/lima/lima_resource.h b/src/gallium/drivers/lima/lima_resource.h
+--- a/src/gallium/drivers/lima/lima_resource.h	2026-11-11 22:45:04
++++ b/src/gallium/drivers/lima/lima_resource.h	2026-11-11 22:45:36
+@@ -89,4 +89,7 @@
+ void
+ lima_resource_context_init(struct lima_context *ctx);
+ 
++void
++lima_util_blitter_save_states(struct lima_context *ctx);
++
+ #endif
+diff -ru a/src/gallium/drivers/lima/lima_screen.c b/src/gallium/drivers/lima/lima_screen.c
+--- a/src/gallium/drivers/lima/lima_screen.c	2026-11-11 22:45:04
++++ b/src/gallium/drivers/lima/lima_screen.c	2026-11-11 22:45:36
+@@ -146,6 +146,9 @@
+    u_init_pipe_screen_caps(screen, 1);
+ 
+    caps->npot_textures = true;
++   /* Tile-aligned scissored clears limit the job to the cleared tiles and skip
++    * the reload (see lima_clear); others fall back to a blitter quad. */
++   caps->clear_scissored = true;
+    caps->blend_equation_separate = true;
+    caps->uma = true;
+    caps->clip_halfz = true;

@@ -1,0 +1,9 @@
+#!/bin/sh
+# idletemp SECONDS: stay idle, then print the mean temperature of the last 120 s.
+t=${1:-600}; t0=$(cut -d. -f1 /proc/uptime); sum=0; n=0
+while [ $(( $(cut -d. -f1 /proc/uptime) - t0 )) -lt $t ]; do
+    v=$(cat /sys/class/thermal/thermal_zone0/temp)
+    [ $(( $(cut -d. -f1 /proc/uptime) - t0 )) -ge $((t - 120)) ] && { sum=$((sum + v)); n=$((n + 1)); }
+    sleep 10
+done
+echo "IDLETEMP mean120=$((sum / n)) seconds=$t cpu=$(cat /sys/devices/system/cpu/cpufreq/policy0/scaling_cur_freq) gpu=$(cat /sys/class/devfreq/20000000.gpu/cur_freq) mcfg1=$(reg 0x1120007c | cut -d' ' -f2)"

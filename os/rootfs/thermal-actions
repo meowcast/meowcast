@@ -1,0 +1,174 @@
+#!/bin/sh
+# thermal-actions VERB [ARG]: what meow-thermald (../thermald.c) does to the board. The daemon
+# decides when; this script knows how. Its output goes to /run/thermal/log. Every step is
+# safe to repeat, and none depends on the UI or appd answering.
+#
+#   prepare TEXT   emergency, before the notice: close the app in front (through appd) so the
+#                  launcher has the screen and can show the notice; without a launcher the
+#                  text goes to the kernel console on HDMI
+#   enter          emergency cooldown: stop apps, appd and the UI; CPU and GPU capped at
+#                  their lowest clocks; HDMI/VOP off (CRTC inactive)
+#   exit           back to normal: clocks uncapped, output on, UI and appd started
+#   level N        throttle level 0-3 (0 normal, 1 warm, 2 hot, 3 severe): CPU share of the apps
+#   fail           the cooldown did not help; the daemon runs its fail_cmd next
+#   status         print the power state (also logged after enter and exit)
+#
+# Left running on purpose during a cooldown: this daemon, the watchdog daemon, the thermal
+# sensor (TSADC), meow-netd with Wi-Fi and the debug bridge (the Wi-Fi chip sits in the cable,
+# not next to the SoC, and a USB re-enumeration is not reliable enough to risk here), the
+# USB gadget console. Not touched: DDR clock and timings, every regulator voltage.
+PATH=/bin:/sbin:/usr/bin:/usr/sbin
+RUN=${THERMAL_RUN_DIR:-/run/thermal}
+CPUFREQ=/sys/devices/system/cpu/cpufreq/policy0
+GPU=$(ls -d /sys/class/devfreq/*.gpu 2>/dev/null | head -n 1)
+BLANK=/sys/class/graphics/fb0/blank
+APPS_CG=/sys/fs/cgroup/apps
+
+# appd itself. Not `pidof appd`: meow-netd is a link to the same binary and would match.
+appd_pid() { ps -o pid,args | awk '$3 == "daemon" && $2 ~ /\/appd$/ { print $1 }'; }
+
+put() { # put VALUE FILE: write if the file is there; say so when the kernel refuses
+    [ -e "$2" ] || return 0
+    echo "$1" > "$2" 2>/dev/null || echo "  write $1 > $2 failed"
+}
+
+get() { cat "$1" 2>/dev/null || echo "?"; }
+
+status() {
+    echo "  temp=$(get /sys/class/thermal/thermal_zone0/temp) cpu=$(get $CPUFREQ/scaling_cur_freq)/$(get $CPUFREQ/scaling_max_freq) online=$(get /sys/devices/system/cpu/online)"
+    [ -n "$GPU" ] && echo "  gpu=$(get "$GPU/cur_freq") max=$(get "$GPU/max_freq") runtime=$(get "$GPU/device/power/runtime_status")"
+    for d in /sys/bus/platform/devices/*.vop /sys/bus/platform/devices/*.hdmi /sys/bus/platform/devices/*.video-codec /sys/bus/platform/devices/*.i2s; do
+        [ -e "$d/power/runtime_status" ] && echo "  ${d##*/} runtime=$(get "$d/power/runtime_status")"
+    done
+    if [ -r /sys/kernel/debug/dri/0/state ]; then
+        echo "  crtc $(grep -m 1 'active=' /sys/kernel/debug/dri/0/state | tr -d '\t')"
+    fi
+    echo "  blank=$(get $BLANK) ui=$(pidof miracast-ui || echo -) appd=$(appd_pid | tr '\n' ' ') netd=$(pidof meow-netd || echo -)"
+    if [ -r /sys/kernel/debug/clk/clk_summary ]; then
+        # Enable counts of the clocks that matter here (2nd column).
+        awk '$1 ~ /^(aclk_vop|dclk_vop|hclk_vop|sclk_hdmi_hdcp|pclk_hdmi_ctrl|pclk_hdmi_phy|hdmiphy|aclk_gpu|aclk_rkvdec|hclk_rkvdec|sclk_vdec_core|sclk_vdec_cabac|sclk_i2s0)$/ { printf "  clk %s en=%s rate=%s\n", $1, $2, $5 }' /sys/kernel/debug/clk/clk_summary
+    fi
+}
+
+# Instances appd runs now: "RUNNING  id  pid=..  ...  display=true|false [background]".
+running() { timeout 5 appctl ps 2>/dev/null | awk '$1 == "RUNNING" { print $2, ($0 ~ /display=true/ ? "front" : "back") }'; }
+
+console_text() {
+    [ -c /dev/tty1 ] || return 0
+    (printf '\n\n\n        %s\n\n' "$1" > /dev/tty1) &
+    p=$!
+    (sleep 2; kill $p 2>/dev/null) &
+}
+
+kill_apps() {
+    for k in "$APPS_CG"/*/cgroup.kill; do
+        [ -e "$k" ] && echo 1 > "$k" 2>/dev/null
+    done
+}
+
+set_cores() { # set_cores N: keep CPUs 0..N-1 online (fewer than 4 only with offline_cores=1)
+    for c in 3 2 1; do
+        f=/sys/devices/system/cpu/cpu$c/online
+        [ -e "$f" ] || continue
+        if [ $c -lt "$1" ]; then
+            [ "$(cat $f)" = 1 ] || put 1 $f
+        else
+            [ "$(cat $f)" = 0 ] || put 0 $f
+        fi
+    done
+}
+
+case "$1" in
+prepare)
+    echo "ACTIONS prepare"
+    if [ -n "$(appd_pid)" ]; then
+        running | while read -r id where; do
+            [ "$where" = front ] || continue
+            echo "  closing $id"
+            timeout 5 appctl stop "$id" >/dev/null 2>&1
+        done
+        # Until the launcher has the screen back (appd gives an app 3 s to leave).
+        i=0
+        while [ $i -lt 10 ] && running | grep -q ' front$'; do usleep 500000; i=$((i + 1)); done
+        usleep 700000
+    fi
+    if ! pidof miracast-ui >/dev/null; then
+        echo "  no launcher: the notice goes to the console"
+        console_text "$2"
+    fi
+    ;;
+enter)
+    echo "ACTIONS enter"
+    status
+    # 1. Everything that works: apps and services (asked first, then killed), appd, the UI.
+    if [ -n "$(appd_pid)" ]; then
+        running | while read -r id where; do timeout 5 appctl stop "$id" >/dev/null 2>&1; done
+    fi
+    # Not appd-session stop on an image whose script still kills by `pidof appd` (it would take
+    # meow-netd along): stop the supervisor loop and the daemon by its own pid here.
+    touch /run/appd.stop
+    p=$(appd_pid)
+    [ -n "$p" ] && kill $p
+    i=0
+    while [ -n "$(appd_pid)" ] && [ $i -lt 10 ]; do usleep 500000; i=$((i + 1)); done
+    rm -f /run/appd-session.pid
+    kill_apps
+    if [ -x /bin/ui-session ]; then
+        ui-session stop
+        pidof miracast-ui >/dev/null && { echo "  launcher did not stop: SIGKILL"; killall -9 miracast-ui; sleep 1; }
+    fi
+    kill_apps
+    # 2. Lowest clocks. Caps only: the governors stay, DDR and the regulators are not touched.
+    put "$(get $CPUFREQ/cpuinfo_min_freq)" $CPUFREQ/scaling_max_freq
+    if [ -n "$GPU" ]; then
+        low=$(tr ' ' '\n' < "$GPU/available_frequencies" | grep . | sort -n | head -n 1)
+        [ -n "$low" ] && put "$low" "$GPU/max_freq"
+    fi
+    [ "${THERMAL_OFFLINE_CORES:-0}" = 1 ] && set_cores 1
+    # 3. Video output off: with no DRM client left the console owns the CRTC, and blanking it
+    #    disables the CRTC: the VOP stops and suspends, the HDMI PHY and its PLL power down.
+    put 4 $BLANK
+    sleep 1
+    status
+    ;;
+exit)
+    echo "ACTIONS exit"
+    set_cores 4
+    # The kernel's thermal caps are separate limits: these two only drop ours. (Never write
+    # back a value read from scaling_max_freq/max_freq: it includes the thermal cap.)
+    put "$(get $CPUFREQ/cpuinfo_max_freq)" $CPUFREQ/scaling_max_freq
+    [ -n "$GPU" ] && put 0 "$GPU/max_freq"
+    put 0 $BLANK
+    [ -x /bin/ui-session ] && UI_SESSION_INTRO=entrance ui-session start
+    [ -x /bin/appd-session ] && [ -x /usr/bin/appd ] && appd-session start
+    sleep 1
+    status
+    ;;
+level)
+    # The apps' share of the CPUs (all app cgroups together; the launcher is not in it).
+    # cpu.max needs CONFIG_CFS_BANDWIDTH; without it the file is not there and nothing happens.
+    case "$2" in
+        2) quota=200000 ;;   # two cores' worth
+        3) quota=100000 ;;   # one core's worth
+        *) quota=max ;;
+    esac
+    put "$quota 100000" $APPS_CG/cpu.max
+    if [ "${THERMAL_OFFLINE_CORES:-0}" = 1 ]; then
+        if [ "$2" = 3 ]; then set_cores 2; else set_cores 4; fi
+    fi
+    echo "ACTIONS level $2: apps cpu.max=$(get $APPS_CG/cpu.max) online=$(get /sys/devices/system/cpu/online)"
+    ;;
+fail)
+    echo "ACTIONS fail"
+    status
+    sync
+    ;;
+status)
+    status
+    ;;
+*)
+    echo "usage: thermal-actions prepare TEXT|enter|exit|level N|fail|status"
+    exit 2
+    ;;
+esac
+exit 0

@@ -1,0 +1,20 @@
+{
+  "name": "meowcast-relay",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Cloud relay between the MEOW pilot (phone) and the dongle when they cannot reach each other on the LAN",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "types": "wrangler types",
+    "check": "tsc --noEmit",
+    "test:security": "node test/security.mjs"
+  },
+  "devDependencies": {
+    "typescript": "5.9.3",
+    "wrangler": "4.156.0",
+    "ws": "^8.22.0",
+    "esbuild": "0.28.2",
+    "miniflare": "5.20261023.3-beta"
+  }
+}

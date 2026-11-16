@@ -1,0 +1,14 @@
+#!/bin/sh
+# vlogic-floor DUTY...: GPU pinned at 400 MHz, vdd_logic duty override per level
+# (V = 1.30 - 0.30 * duty/1200), gpu-soak x3 + memtest concurrently per level.
+df=/sys/class/devfreq/20000000.gpu
+echo userspace > $df/governor; echo 400000000 > $df/userspace/set_freq
+for d in "$@"; do
+    reg 0x110b0028=$(printf 0x%x $d) >/dev/null
+    echo "LEVEL duty=$d mV=$((1300 - 300 * d / 1200))"
+    /opt/memtest 32 75 2 > /tmp/mt.log 2>&1 &
+    gpu-soak 400 3 | grep -E "SOAK|CANARY result|VERIFY |PAGECACHE|TEMP"
+    wait; cat /tmp/mt.log | tail -n 3
+    echo "  duty_now=$(reg 0x110b0028 | cut -d' ' -f2) gpu=$(cat $df/cur_freq)"
+done
+reg 0x110b0028=0x258 >/dev/null; echo simple_ondemand > $df/governor; echo FLOOR_DONE

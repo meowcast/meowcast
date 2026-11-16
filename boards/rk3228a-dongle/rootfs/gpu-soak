@@ -1,0 +1,21 @@
+#!/bin/sh
+# Stray-GPU-write soak: gpu-soak MHZ RUNS [gpu-test args...]
+# Repeats a workload (default: 1080p offscreen, 8 blended layers - the case
+# that corrupted memory) inside a 96 MiB canary, and after each run checks the
+# boot-time hashes of the userspace binaries (/run/boot.sha, written by init).
+# Uses shell builtins for parsing so a damaged BusyBox still reports.
+mhz=$1; runs=$2; shift 2
+[ -n "$mhz" ] && [ -n "$runs" ] || { echo 'usage: gpu-soak MHZ RUNS [gpu-test args]' >&2; exit 2; }
+clk-set gpu "$mhz" || exit 1
+[ $# -gt 0 ] || set -- --offscreen --mode 1920x1080@60 --inflight 2 --layers 8
+i=0
+while [ $i -lt "$runs" ]; do
+    i=$((i + 1))
+    canary 96 gpu-test "$@" --seconds 8 --fps 0 --verify > /tmp/soak.log 2>&1
+    echo "SOAK gpu=${mhz}MHz run=$i exit=$?"
+    while read -r l; do
+        case "$l" in *CANARY_HIT*|*'CANARY result'*|*RENDER_RESULT*|*VERIFY\ *|*FAIL:*) echo "  $l" ;; esac
+    done < /tmp/soak.log
+    if sha256sum -c -s /run/boot.sha 2>/dev/null; then echo '  PAGECACHE_OK'; else echo '  PAGECACHE_CORRUPTED'; fi
+    read -r t < /sys/class/thermal/thermal_zone0/temp; echo "  TEMP $t"
+done

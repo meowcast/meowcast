@@ -1,0 +1,63 @@
+#!/bin/sh
+# appd-session start|stop|restart|status: the app manager (/usr/bin/appd daemon) under a
+# small supervisor, started by init after /data is mounted. A crash restarts it after 2 s
+# (it kills leftover app cgroups itself). Log: /run/appd.log (rotated at 256 KiB).
+# Development build from /opt: APPD=/opt/appd/bin/appd APPD_KEYS=/opt/appd/keys appd-session restart
+APPD=${APPD:-/usr/bin/appd}
+LOG=/run/appd.log
+
+# The daemon's pid. Never `pidof appd`: meow-netd is a link to the same binary, so pidof returns
+# it too, and killing it takes the network, the phone remote and the debug bridge down (which
+# then stays off until someone switches it on again; found 15 Nov). Only "<appd> daemon" counts;
+# the sandboxed children run as "/proc/self/exe sandbox-exec".
+appd_pid() {
+    for p in $(pidof "${APPD##*/}"); do
+        [ "$(tr '\0' ' ' < /proc/$p/cmdline 2>/dev/null)" = "$APPD daemon " ] && echo $p
+    done
+}
+
+running() {
+    [ -f /run/appd-session.pid ] && kill -0 "$(cat /run/appd-session.pid)" 2>/dev/null
+}
+
+case "$1" in
+start)
+    [ -x "$APPD" ] || { echo "APPD_SESSION no $APPD"; exit 1; }
+    running && { echo "APPD_SESSION already running"; exit 0; }
+    # Thermal cooldown (meow-thermald): nothing starts until it ends; thermal-actions exit starts us.
+    [ -e /run/thermal/cooldown ] && { echo "APPD_SESSION not started: thermal cooldown (/run/thermal/log)"; exit 0; }
+    rm -f /run/appd.stop
+    (
+        while [ ! -e /run/appd.stop ]; do
+            [ -f "$LOG" ] && [ "$(wc -c < "$LOG")" -gt 262144 ] && mv "$LOG" "$LOG.1"
+            "$APPD" daemon >>"$LOG" 2>&1
+            rc=$?
+            [ -e /run/appd.stop ] && break
+            echo "APPD_SESSION exit rc=$rc; restarting in 2 s" >>"$LOG"
+            sleep 2
+        done
+    ) </dev/null &
+    echo $! >/run/appd-session.pid
+    echo "APPD_SESSION started $APPD"
+    ;;
+stop)
+    touch /run/appd.stop
+    pid=$(appd_pid)
+    [ -n "$pid" ] && kill $pid
+    i=0
+    while [ -n "$(appd_pid)" ] && [ $i -lt 5 ]; do sleep 1; i=$((i + 1)); done
+    rm -f /run/appd-session.pid
+    echo "APPD_SESSION stopped"
+    ;;
+restart)
+    "$0" stop
+    "$0" start
+    ;;
+status)
+    if running; then echo "APPD_SESSION running pid=$(appd_pid)"; else echo "APPD_SESSION stopped"; fi
+    ;;
+*)
+    echo "usage: appd-session start|stop|restart|status"
+    exit 2
+    ;;
+esac

@@ -1,0 +1,47 @@
+#!/bin/sh
+# Composite USB gadget: CDC ACM console (first, /dev/ttyGS0) + CDC Ethernet.
+# Usage: usb-gadget [ecm|ncm]   (default ecm; macOS supports both natively)
+net=${1:-ecm}
+G=/sys/kernel/config/usb_gadget/rk3228
+grep -q " /sys/kernel/config " /proc/mounts || mount -t configfs none /sys/kernel/config
+udc=
+for i in 1 2 3 4 5 6 7 8 9 10; do
+    udc=$(ls /sys/class/udc 2>/dev/null | head -n 1)
+    [ -n "$udc" ] && break
+    sleep 1
+done
+[ -n "$udc" ] || { echo "usb-gadget: no UDC"; exit 1; }
+if [ -d $G ]; then
+    echo "" > $G/UDC 2>/dev/null
+else
+    mkdir -p $G
+fi
+cd $G || exit 1
+echo 0x1d6b > idVendor        # Linux Foundation
+echo 0x0104 > idProduct       # Multifunction Composite Gadget
+echo 0x0100 > bcdDevice
+echo 0x0200 > bcdUSB
+# Miscellaneous / IAD: required for a composite device with ACM on macOS.
+echo 0xEF > bDeviceClass
+echo 0x02 > bDeviceSubClass
+echo 0x01 > bDeviceProtocol
+mkdir -p strings/0x409
+echo miracast-ramboot > strings/0x409/manufacturer
+echo "RK3228A RAM dongle" > strings/0x409/product
+echo rk3228a-dev-0001 > strings/0x409/serialnumber
+mkdir -p configs/c.1/strings/0x409
+echo "ACM+$net" > configs/c.1/strings/0x409/configuration
+echo 500 > configs/c.1/MaxPower
+echo 0x80 > configs/c.1/bmAttributes
+mkdir -p functions/acm.GS0
+mkdir -p functions/$net.usb0 || { echo "usb-gadget: no $net function"; net=; }
+if [ -n "$net" ]; then
+    # Fixed, locally administered MACs so macOS keeps one stable interface.
+    echo 02:52:4b:32:32:01 > functions/$net.usb0/dev_addr
+    echo 02:52:4b:32:32:02 > functions/$net.usb0/host_addr
+fi
+for f in configs/c.1/*.*; do [ -L "$f" ] && rm "$f"; done
+ln -s functions/acm.GS0 configs/c.1/
+[ -n "$net" ] && ln -s functions/$net.usb0 configs/c.1/
+echo "$udc" > UDC
+echo "usb-gadget: bound to $udc (acm${net:+ + $net} as $(cat functions/$net.usb0/ifname 2>/dev/null))"

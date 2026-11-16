@@ -1,0 +1,24 @@
+// SPDX-License-Identifier: (GPL-2.0+ OR MIT)
+#include "rk3228a-miracast-ram.dts"
+/ {
+    model = "RK3228A Miracast USB-only RAM diagnostic";
+    chosen {
+        bootargs = "console=tty0 loglevel=7 printk.time=1 rdinit=/init panic=0 clk_ignore_unused pd_ignore_unused cpuidle.off=1";
+    };
+};
+&display_subsystem { status = "disabled"; };
+&vop { status = "disabled"; };
+&vop_mmu { status = "disabled"; };
+&hdmi { status = "disabled"; };
+&hdmi_phy { status = "disabled"; };
+&gpu { status = "disabled"; };
+&u2phy0_host { status = "disabled"; };
+&u2phy1 { status = "disabled"; };
+&u2phy1_otg { status = "disabled"; };
+&u2phy1_host { status = "disabled"; };
+&usb_host0_ehci { status = "disabled"; };
+&usb_host0_ohci { status = "disabled"; };
+&usb_host1_ehci { status = "disabled"; };
+&usb_host1_ohci { status = "disabled"; };
+&usb_host2_ehci { status = "disabled"; };
+&usb_host2_ohci { status = "disabled"; };

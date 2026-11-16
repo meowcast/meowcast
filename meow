@@ -1,0 +1,141 @@
+#!/bin/sh
+# meow: one entry point for building the firmware, deploying the cloud side and reaching a
+# board's own tools. Everything it runs is an ordinary script in this repository; `./meow help`
+# lists the commands and docs/BUILDING.md explains them.
+set -eu
+repo=$(cd "$(dirname "$0")" && pwd)
+cd "$repo"
+
+# ---- configuration: config.env (or $MEOW_CONFIG), parsed by tools/config.sh ----------------
+. "$repo/tools/config.sh"
+BOARD=${BOARD:-rk3228a-dongle}
+image=${MEOW_BUILDER_IMAGE:-meowcast-builder}
+volume=${MEOW_BUILD_VOLUME:-meowcast-build}
+board=$repo/boards/$BOARD
+export BOARD
+
+say() { printf '\n== %s\n' "$*"; }
+die() { echo "meow: $*" >&2; exit 2; }
+[ -f "$board/board.sh" ] || die "unknown board '$BOARD' (boards/: $(ls boards | grep -v README | tr '\n' ' '))"
+. "$board/board.sh"
+
+# in_builder [--net] DIR COMMAND...: run a command in the builder image, repository at /fw.
+in_builder() {
+    net=--network=none
+    if [ "$1" = --net ]; then net=; shift; fi
+    dir=$1; shift
+    docker run --rm $net -v "$repo:/fw" -v "$volume:/build" -w "/fw/$dir" \
+        -e BOARD -e PROFILE -e LAB -e GPU_TEST -e UI -e APPD -e WIFI -e MEDIA -e KLAT -e JOBS \
+        -e THERMALD -e BUTTOND -e UPDATE_LOCK \
+        -e MEOW_STORE_URL -e MEOW_RELAY_HOST -e MEOW_PILOT_URL -e MEOW_STORE_KEY -e MEOW_STORE_NAME \
+        "$image:gpu" "$@"
+}
+
+need_docker() { docker info >/dev/null 2>&1 || die 'Docker is not running'; }
+
+cmd_setup() {
+    [ -f "$config" ] || { cp config.env.example "$config"; echo "wrote $config: edit it (docs/CONFIGURATION.md)"; }
+    need_docker
+    say 'builder images'
+    docker build -t "$image:base" -f os/Dockerfile os
+    docker build -t "$image:gpu" --build-arg "BASE=$image:base" -f os/Dockerfile.gpu os
+}
+
+cmd_fetch() {
+    need_docker
+    say 'source archives (kernel, BusyBox, Mesa, Wi-Fi userspace)'
+    GPU_TEST=1 WIFI=1 sh os/fetch-sources.sh
+    say 'Wi-Fi driver'
+    sh wifi/fetch-driver.sh
+    say 'Rust crates and fonts (UI), Rust crates (apps)'
+    in_builder --net ui sh fetch-deps.sh
+    in_builder --net apps sh fetch-deps.sh
+    if [ -x "$board/fetch-tools.sh" ]; then
+        say "host tools of $BOARD"
+        "$board/fetch-tools.sh"
+    fi
+}
+
+os_build() { in_builder os sh build.sh; }
+
+cmd_build() {
+    need_docker
+    export PROFILE=${PROFILE:-$BOARD_DEFAULT_PROFILE} GPU_TEST=${GPU_TEST:-1}
+    part=${1:-all}
+    case "$part" in
+        mesa) in_builder os sh build-mesa.sh ;;
+        ui) in_builder ui sh build-ui.sh ;;
+        apps) in_builder apps sh build-apps.sh ;;
+        wifi) in_builder wifi sh build-userspace.sh ;;
+        pilot) sh cloud/pilot/package-pilot.sh ;;
+        os) os_build ;;
+        host-tools) [ -f "$board/build-host-tools.sh" ] && sh "$board/build-host-tools.sh" ;;
+        all)
+            say 'Mesa (Lima)'; in_builder os sh build-mesa.sh
+            if [ ! -f os/output/gpu/runtime-manifest.json ]; then
+                # The UI and app packages are made against the base system's library list,
+                # which the first OS build writes.
+                say 'base system (first pass, without UI and apps)'
+                UI=0 APPD=0 WIFI=0 in_builder os sh build.sh
+            fi
+            say 'launcher'; in_builder ui sh build-ui.sh
+            say 'app manager, services and apps'; in_builder apps sh build-apps.sh
+            say 'Wi-Fi userspace and TLS client'; in_builder wifi sh build-userspace.sh
+            say 'setup page'; sh cloud/pilot/package-pilot.sh
+            say "firmware image ($BOARD, profile $PROFILE)"; os_build
+            if [ -f "$board/build-host-tools.sh" ]; then
+                say "host tools of $BOARD"; sh "$board/build-host-tools.sh"
+            fi
+            if [ -f "$board/make-manifest.py" ]; then python3 -I "$board/make-manifest.py" >/dev/null; fi
+            say 'done'; ls -l os/output/zImage "os/output/$BOARD_DTB_OUT"
+            [ -n "${MEOW_STORE_URL:-}" ] || echo 'note: MEOW_STORE_URL is not set: this firmware has no app store (docs/CLOUD.md)'
+            [ -n "${MEOW_RELAY_HOST:-}" ] || echo 'note: MEOW_RELAY_HOST is not set: this firmware has no phone remote over the internet'
+            ;;
+        *) die "build what? all, mesa, ui, apps, wifi, pilot, os, host-tools" ;;
+    esac
+}
+
+cmd_test() {
+    need_docker
+    say 'apps (host tests)'
+    # The GPU libraries exist for the target only: the host tests link against empty stand-ins.
+    stub='mkdir -p /tmp/stub && echo "" | cc -shared -x c - -o /tmp/stub/libEGL.so && for l in gbm GLESv2 drm; do cp /tmp/stub/libEGL.so /tmp/stub/lib$l.so; done && RUSTFLAGS="-L native=/tmp/stub -C link-arg=-Wl,--unresolved-symbols=ignore-all" LD_LIBRARY_PATH=/tmp/stub'
+    in_builder apps sh -c "$stub CARGO_TARGET_DIR=/build/apps-target-host cargo test --locked --offline --config .cargo/vendor.toml --target \"\$(rustc -vV | sed -n 's/^host: //p')\""
+    say 'UI (host tests)'
+    in_builder ui sh -c "$stub CARGO_TARGET_DIR=/build/ui-target-host cargo test --locked --offline --config .cargo/vendor.toml --target \"\$(rustc -vV | sed -n 's/^host: //p')\""
+    say 'host scripts'
+    (cd os && python3 test-console-markers.py)
+    if python3 -c 'import spake2' 2>/dev/null; then (cd tools && python3 -m unittest -q test_meowdbg 2>&1 | tail -3); else echo 'meowdbg tests skipped: pip install -r tools/requirements.txt'; fi
+    if [ -f "$board/test-guards.py" ] && [ -f os/output/manifest.json ]; then (cd "$board" && python3 test-guards.py); fi
+}
+
+cmd_help() {
+    cat <<EOF
+usage: ./meow COMMAND            (board: $BOARD; config: $config)
+
+  setup                 create config.env from the example and build the builder images
+  fetch                 download pinned sources, crates, the Wi-Fi driver and board tools
+  build [PART]          build everything, or one of: mesa ui apps wifi pilot os host-tools
+  test                  host-side tests
+  shell                 a shell in the builder image (repository at /fw, build volume at /build)
+  cloud ARGS...         cloud/deploy.sh: your own relay, pilot app and store on Cloudflare
+  board ARGS...         the board's own tool (boards/$BOARD/board): boot, flash, console...
+  boards                list the boards
+
+Environment or config.env: BOARD, PROFILE, LAB, MEOW_* (docs/CONFIGURATION.md).
+EOF
+}
+
+command=${1:-help}; [ $# -gt 0 ] && shift
+case "$command" in
+    setup) cmd_setup ;;
+    fetch) cmd_fetch ;;
+    build) cmd_build "$@" ;;
+    test) cmd_test ;;
+    shell) need_docker; docker run --rm -it -v "$repo:/fw" -v "$volume:/build" -w /fw "$image:gpu" "${@:-bash}" ;;
+    cloud) exec sh cloud/deploy.sh "$@" ;;
+    board) [ -x "$board/board" ] || die "boards/$BOARD has no 'board' tool"; exec "$board/board" "$@" ;;
+    boards) for b in boards/*/board.sh; do d=$(dirname "$b"); printf '%-20s %s\n' "$(basename "$d")" "$(sed -n "s/^BOARD_DESCRIPTION='\(.*\)'$/\1/p" "$b")"; done ;;
+    help|-h|--help) cmd_help ;;
+    *) cmd_help; exit 2 ;;
+esac

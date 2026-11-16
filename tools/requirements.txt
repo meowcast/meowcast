@@ -1,0 +1,2 @@
+# Pairing only. Shell, copying and cloud forwarding use Python's standard library.
+spake2==0.9

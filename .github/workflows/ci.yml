@@ -1,0 +1,44 @@
+name: ci
+on:
+  push:
+    branches: [main]
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  scripts:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Shell syntax
+        run: |
+          for f in meow $(git ls-files '*.sh') boards/*/board; do sh -n "$f"; done
+      - name: Python syntax
+        run: python3 -m compileall -q $(git ls-files '*.py')
+      - name: Host script tests
+        run: |
+          (cd os && python3 test-console-markers.py)
+          ./meow boards
+      - name: No personal infrastructure in the tree
+        run: |
+          ! git grep -n -I -E '[a-z0-9-]+\.[a-z0-9-]+\.workers\.dev' -- . ':!ui/src/text.rs' ':!docs' ':!.github'
+          ! git ls-files | grep -E '\.(key|pem|p12|bin)$|(^|/)config\.env$|(^|/)\.token$' | grep -v '^cloud/tls/roots.pem$'
+  cloud:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: "Relay: types, security tests, bundle"
+        working-directory: cloud/relay
+        run: |
+          npm ci
+          npm run check
+          npm run test:security
+          npx wrangler deploy --dry-run
+      - name: Pilot app builds
+        working-directory: cloud/pilot
+        run: |
+          npm ci
+          VITE_CLOUD=1 VITE_RELAY=https://relay.example.org npx vite build --outDir dist-cloud

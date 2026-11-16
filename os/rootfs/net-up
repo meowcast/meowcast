@@ -1,0 +1,12 @@
+#!/bin/sh
+# Bring up USB Ethernet with DHCP from the Mac's Internet Sharing (bridge100).
+# Development only: no listening services are started.
+ifname=$(cat /sys/kernel/config/usb_gadget/rk3228/functions/*.usb0/ifname 2>/dev/null | head -n 1)
+ifname=${ifname:-usb0}
+hostname rk3228
+ip link set lo up
+ip link set "$ifname" up || exit 1
+killall udhcpc 2>/dev/null
+# -b: keep retrying in the background until the Mac answers; the script
+# writes /etc/resolv.conf, the default route and starts ntpd.
+udhcpc -i "$ifname" -b -S -t 5 -T 3 -A 5 -x hostname:rk3228 -p /run/udhcpc.pid

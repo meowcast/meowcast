@@ -1,0 +1,17 @@
+{
+  "id": "dev.meow.inspector",
+  "name": "Sandbox Inspector",
+  "summary": "What an app may and may not do",
+  "version": "0.1.0",
+  "version_code": 1,
+  "exec": "bin/inspector",
+  "publisher": "meow examples",
+  "permissions": [
+    { "name": "display" },
+    { "name": "input" },
+    { "name": "storage", "quota_kb": 64, "reason": "Counts how often it was opened" },
+    { "name": "network", "required": false, "reason": "Checks whether it can reach the app store" }
+  ],
+  "resources": { "memory_mb": 48, "tmp_mb": 4, "pids": 16 },
+  "appearance": { "glyph": "search", "tint": "#1f3b3a", "badge": ["#4fb3e8", "#2a72c4"], "shape": "circle" }
+}

@@ -1,0 +1,28 @@
+--- a/src/util/rand_xor.c
++++ b/src/util/rand_xor.c
+@@ -29,6 +29,7 @@
+ #include <sys/random.h>
+ #endif
+ #include <unistd.h>
++#include <errno.h>
+ #include <fcntl.h>
+ #endif
+ 
+@@ -72,7 +73,17 @@
+    ssize_t ret = getrandom(seed, seed_size, GRND_NONBLOCK);
+    if (ret == seed_size)
+       return;
++#if DETECT_OS_LINUX
++   /* Early boot: the kernel's pool is not initialised yet. Reading /dev/urandom then
++    * makes the kernel generate jitter entropy until it is, which takes seconds on slow
++    * SoCs and stalls gbm_create_device/eglInitialize of a boot-time UI. This seed only
++    * randomises disk-cache file names, so GRND_INSECURE (Linux 5.6+, never blocks) is
++    * good enough. */
++   if (ret < 0 && errno == EAGAIN &&
++       getrandom(seed, seed_size, 0x0004 /* GRND_INSECURE */) == seed_size)
++      return;
+ #endif
++#endif
+ 
+    int fd = open("/dev/urandom", O_RDONLY);
+    if (fd >= 0) {

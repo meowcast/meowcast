@@ -1,0 +1,233 @@
+// SPDX-License-Identifier: (GPL-2.0+ OR MIT)
+// Graphics profile plus the stock firmware's multimedia clock plan.
+#include "rk3228a-miracast-graphics.dts"
+#include <dt-bindings/thermal/thermal.h>
+
+/ {
+    // The TV UI's default output is 1080p60 (rootfs/ui-session follows video=): booting the
+    // console in the same mode lets the UI take over without an HDMI re-sync. No cursor.
+    chosen {
+        bootargs = "console=tty0 loglevel=4 printk.time=1 rdinit=/init panic=0 clk_ignore_unused pd_ignore_unused cpuidle.off=1 video=HDMI-A-1:1920x1080-16@60 vt.global_cursor_default=0 cma=16M";
+    };
+};
+/ {
+    model = "RK3228A Miracast perf-lab RAM diagnostic";
+    // vdd_logic (GPU, VOP, DDR controller) from the stock DTB: PWM2 (GPIO1_B4,
+    // same pin/function as upstream pwm2_pin), 25 us period, 1.0..1.3 V,
+    // coefficient 300 => linear 3 mV per duty-%. Polarity is unconfirmed, but
+    // 50 % duty is the midpoint of the range under either polarity: 1.15 V,
+    // the stock voltage for GPU 500/600 MHz (400 MHz needed 1.10 V).
+    // Per-OPP voltage assumes the stock driver formula (duty% = (1.3 V - V) / 3 mV,
+    // i.e. more duty = lower voltage: 1.10 V = 67 %, 1.05 V = 83 %). If the
+    // polarity is the opposite, 67 % / 83 % give 1.20 / 1.25 V instead: still
+    // inside the stock 1.0..1.3 V range, only hotter. The 400 MHz point stays at
+    // the polarity-independent 50 %. A fixed-load temperature A/B at 200 vs 400
+    // MHz tells which way it is (lower voltage => cooler).
+    // Lower points (83 % and 67 % duty) each ended in a boot stall at a random
+    // point soon after the regulator was set (11 Nov), consistent with too little
+    // voltage under the stock formula (stock applied +50..100 mV leakage adjust
+    // to its DDR table). Back to the proven fixed 1.15 V for every OPP.
+    vdd_logic: regulator-vdd-logic {
+        compatible = "pwm-regulator";
+        pwms = <&pwm2 0 25000 0>;
+        regulator-name = "vdd_logic";
+        // Polarity measured 12 Nov (idle thermal A/B: duty 60 % ran 3 C cooler
+        // than 40 %): V = 1.30 V - 0.30 V * duty, as for vdd_arm. Floor measured
+        // with memtest + GPU soak at 93-95 C: 1.050 V 243 DRAM errors, 1.075 V
+        // 1 error, 1.100 V clean for 5 min (all the bit 1/17 DQ signature; the
+        // DDR controller/PHY sets the floor, not the GPU, at DDR600).
+        // With DDR533 (default since 12 Nov) heavy 4-thread memtest was clean at
+        // 1.05 and 1.10 V; 1.10 V = stock voltage for GPU 400 MHz, and 50 mV above
+        // a clean point. 67 % duty = 1.099 V.
+        voltage-table = <1100000 67>;
+        regulator-min-microvolt = <1100000>;
+        regulator-max-microvolt = <1100000>;
+        regulator-settling-time-up-us = <2000>;
+        regulator-always-on;
+        regulator-boot-on;
+    };
+    // vdd_arm from the stock DTB: PWM1 (GPIO0_D6, same as upstream pwm1_pin),
+    // 2 us period, 0.95..1.40 V, linear. Polarity measured 12 Nov (thermal A/B
+    // at a fixed 408 MHz 4-core load: duty 33 % ran 5 C hotter than 67 %):
+    // V = 1.40 V - 0.45 V * duty, the stock driver formula. Continuous mode:
+    // 100 % duty = 0.95 V, 0 % = 1.40 V.
+    vdd_arm: regulator-vdd-arm {
+        compatible = "pwm-regulator";
+        pwms = <&pwm1 0 2000 0>;
+        regulator-name = "vdd_arm";
+        pwm-dutycycle-range = <100 0>;
+        regulator-min-microvolt = <950000>;
+        regulator-max-microvolt = <1400000>;
+        regulator-settling-time-up-us = <1000>;
+        regulator-always-on;
+        regulator-boot-on;
+    };
+    // Stock CPU DVFS points (408/600/816 MHz) at the fixed vdd_arm above.
+    // CPU DVFS: stock 408/600/816 MHz needed 0.95/0.975/1.00 V (+ leakage
+    // adjust up to 150 mV); start at stock + ~50..100 mV. 1008/1200 MHz are the
+    // upstream rk322x points (1.175/1.275 V), left out until validated.
+    cpu_opp_lab: opp-table-cpu-lab {
+        compatible = "operating-points-v2";
+        opp-shared;
+        opp-408000000 { opp-hz = /bits/ 64 <408000000>; opp-microvolt = <1000000>; clock-latency-ns = <40000>; };
+        opp-600000000 { opp-hz = /bits/ 64 <600000000>; opp-microvolt = <1050000>; clock-latency-ns = <40000>; };
+        opp-816000000 { opp-hz = /bits/ 64 <816000000>; opp-microvolt = <1100000>; clock-latency-ns = <40000>; };
+        // NOT YET VALIDATED (run, but DRAM errors masked the CPU result):
+        // opp-1008000000 @ 1175000, opp-1200000000 @ 1275000 (upstream points).
+    };
+    // Booting without clk_ignore_unused/pd_ignore_unused stalled right after
+    // cpufreq init (11 Nov): keep both until the culprit clock/domain is found
+    // (output/experiment/ has a DTB without them).
+
+};
+&pwm2 { status = "okay"; };
+&pwm1 { status = "okay"; };
+// SMP (12 Nov): all four Cortex-A7 cores. There is no secure monitor, but
+// Linux runs in secure SVC, so the BootROM's secondary-core mailbox works as on
+// RK3036 (and as OP-TEE's RK322x PSCI uses it): after its core reset the
+// secondary waits in WFE until SRAM+4 = 0xDEADBEAF, then jumps to SRAM+8.
+// The CONFIG_SMP=y kernel sets ACTLR.SMP on every core itself (proc-v7) and
+// the timer node is "not-fw-configured", so the secondaries need no CNTFRQ/
+// CNTVOFF setup. cpu0 is back at its real MPIDR 0xf00 (the UP kernel needed 0).
+/ {
+    int_sram: sram@10080000 {
+        compatible = "mmio-sram";
+        reg = <0x10080000 0x1000>;
+        #address-cells = <1>;
+        #size-cells = <1>;
+        ranges = <0 0x10080000 0x1000>;
+        smp-sram@0 {
+            compatible = "rockchip,rk3066-smp-sram";
+            reg = <0x00 0x10>;
+        };
+    };
+};
+&cpu0 { reg = <0xf00>; enable-method = "rockchip,rk3036-smp"; operating-points-v2 = <&cpu_opp_lab>; cpu-supply = <&vdd_arm>; };
+&cpu1 { status = "okay"; enable-method = "rockchip,rk3036-smp"; operating-points-v2 = <&cpu_opp_lab>; };
+&cpu2 { status = "okay"; enable-method = "rockchip,rk3036-smp"; operating-points-v2 = <&cpu_opp_lab>; };
+&cpu3 { status = "okay"; enable-method = "rockchip,rk3036-smp"; operating-points-v2 = <&cpu_opp_lab>; };
+// Hardware watchdog (dw_wdt); userspace `watchdog` daemon feeds it (rootfs/init).
+&wdt { status = "okay"; };
+// Disabling the decoder/RGA nodes (so genpd's sync_state could power their
+// domains off) was part of the stalled boots; left enabled until tested alone.
+// GPU DVFS (Lima devfreq, simple_ondemand) on exact CPLL dividers, with
+// per-OPP vdd_logic (above). 400 MHz soaked clean at 1.15 V;
+// the remaining limit was heat (shutdown at the 90 C critical trip).
+/ {
+    gpu_opp_table: opp-table-gpu {
+        compatible = "operating-points-v2";
+        opp-200000000 { opp-hz = /bits/ 64 <200000000>; opp-microvolt = <1100000>; };
+        opp-300000000 { opp-hz = /bits/ 64 <300000000>; opp-microvolt = <1100000>; };
+        opp-400000000 { opp-hz = /bits/ 64 <400000000>; opp-microvolt = <1100000>; };
+    };
+};
+&gpu {
+    operating-points-v2 = <&gpu_opp_table>;
+    mali-supply = <&vdd_logic>;
+    #cooling-cells = <2>;
+};
+// Throttle instead of shutting down, using the stock thermal policy as the
+// reference: stock throttled (CPU only) around target-temp 95 C and reset the
+// SoC in hardware at 120 C; its GPU had no thermal limit. Here the GPU steps
+// 400 -> 300 MHz at 90 C and 300 -> 200 MHz at 95 C (2 C hysteresis each).
+// Above the passive trips userspace takes over (15 Nov, ../../../os/thermald.c): throttle levels at
+// 100 and 104 C and an emergency cooldown at 108 C (111 C at once) that turns the video
+// output off for a minute instead of rebooting. The kernel's critical trip is only the
+// last resort for a dead daemon, so it moved from 110 to 115 C to leave the cooldown room
+// (the daemon itself gives up at 113 C); the hardware reset moved with it to the stock
+// firmware's 120 C (TSADC code table and SoC rating end at 125 C).
+&cpu_alert0 { temperature = <90000>; };
+&cpu_alert1 { temperature = <95000>; };
+&cpu_crit { temperature = <115000>; };
+&cpu_thermal {
+    cooling-maps {
+        map-gpu0 {
+            trip = <&cpu_alert0>;
+            cooling-device = <&gpu THERMAL_NO_LIMIT 1>;
+        };
+        map-gpu1 {
+            trip = <&cpu_alert1>;
+            cooling-device = <&gpu 1 THERMAL_NO_LIMIT>;
+        };
+        // 3 CPU OPPs (states 0..2 = 816..408 MHz): 600 MHz at 90 C, 408 MHz at
+        // 95 C. Voltage follows the OPP (vdd_arm DVFS). With 1008/1200 MHz use
+        // <NO_LIMIT 2> / <2 NO_LIMIT>.
+        map0 { cooling-device = <&cpu0 THERMAL_NO_LIMIT 1>; };
+        map1 { cooling-device = <&cpu0 1 THERMAL_NO_LIMIT>; };
+    };
+};
+// The USB helper leaves CPLL locked at 500 MHz but in slow (24 MHz) mode with
+// no users, and runs VOP/GPU AXI from GPLL 384 MHz / 2 = 192 MHz. That VOP
+// rate cannot fetch 4K60 scanout (~2 GB/s). The stock vendor kernel used
+// aclk_vop = 400 MHz and GPU 400..600 MHz (DVFS). Put both on CPLL = 1200 MHz
+// (stock GPLL rate) so GPLL-derived bus/USB/peripheral clocks stay unchanged.
+// Rates are exact CPLL dividers (index 0), so the composite keeps CPLL and
+// never selects the mode-dependent HDMI PHY clock. GPU boots at 300 MHz;
+// higher rates are tested at runtime (writable clk debugfs in this kernel).
+&cru {
+    assigned-clocks = <&cru PLL_CPLL>, <&cru ACLK_VOP_PRE>, <&cru ACLK_GPU>;
+    assigned-clock-rates = <1200000000>, <400000000>, <300000000>;
+};
+// Temperature telemetry and a hardware over-temperature reset (120 C, the stock value;
+// 115 C until 15 Nov). CRU reset mode; the OTP output pin is left unconfigured.
+&tsadc {
+    status = "okay";
+    rockchip,hw-tshut-mode = <0>;
+    rockchip,hw-tshut-temp = <120000>;
+    /delete-property/ pinctrl-names;
+    /delete-property/ pinctrl-0;
+    /delete-property/ pinctrl-1;
+    /delete-property/ pinctrl-2;
+};
+// SPI-NOR (W25Q128FV, 16 MiB) on spi0 cs0: only the app/config data partition
+// is exposed to Linux (13 Nov, apps work). With fixed partitions and no
+// partitioned master, the only MTD device is this partition (/dev/mtd0, root
+// only; mtdchar is always built in 7.3, MTD block devices are off), so nothing
+// below 0xc00000 (loader, both IDBlocks = button->MaskROM path, trust, kernel
+// slot) is reachable from Linux; ramboot.py verify checks this DTB for it.
+// JFFS2, mounted at /data by init.
+// pinctrl: the NOR is on SPI0's second pin route ("spi-1": GPIO0_C7 clk,
+// GPIO2_A1 tx, GPIO2_A0 rx, GPIO2_A2 cs0; GRF_COM_IOMUX bit 5, set by the
+// pinctrl route table), as in boards/rk3228a-dongle/flash/stage_spi_write.c. Upstream's default
+// spi-0 pins read ff ff ff (13 Nov). Never the spi-0 cs1 pin either: GPIO1_B4
+// is PWM2, the vdd_logic regulator. No cs1 at all (unused).
+// No quad mode (bus widths 1): the driver never sets the QE status bit.
+&spi0 {
+    status = "okay";
+    pinctrl-0 = <&spi1_clk &spi1_tx &spi1_rx &spi1_cs0>;
+    flash@0 {
+        compatible = "jedec,spi-nor";
+        reg = <0>;
+        spi-max-frequency = <24000000>;
+        spi-rx-bus-width = <1>;
+        spi-tx-bus-width = <1>;
+        partitions {
+            compatible = "fixed-partitions";
+            #address-cells = <1>;
+            #size-cells = <1>;
+            // 62 x 64 KiB erase blocks. Kernel slot ends below 0xc00000;
+            // 0xfe0000-0x1000000 (stock misc + backup table) stays untouched.
+            data@c00000 {
+                label = "data";
+                reg = <0xc00000 0x3e0000>;
+            };
+        };
+    };
+};
+// USB OTG dual role (14 Nov, Wi-Fi). The micro-USB port reaches either the Mac (device role:
+// console + Ethernet gadget, as before) or, with the dongle's original cable, the RTL8733BU
+// Wi-Fi chip built into that cable (host role; the stock firmware forced host mode,
+// rockchip,usb-mode = <1>). There is no ID pin to tell them apart: dwc2 starts as a device
+// and rootfs/usb-role switches it through the role switch (session-valid overrides) when no
+// computer enumerates the gadget. VBUS always comes from the cable (no vbus-supply here:
+// the board must never drive 5 V back into it).
+&usb_otg {
+    dr_mode = "otg";
+    usb-role-switch;
+    role-switch-default-mode = "peripheral";
+};
+// No PHY OTG/charger state machine on this port (patch: wifi/kernel-wifi.sh): its charger
+// detection powered the PHY off with the Wi-Fi cable, so host mode never started.
+&u2phy0_otg {
+    rockchip,controller-role;
+};

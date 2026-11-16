@@ -1,0 +1,21 @@
+#!/bin/sh
+# Infer the PWM2 (vdd_logic) duty->voltage polarity from steady-state
+# temperature, with the system otherwise idle:
+#   GPU OPP 400 MHz -> 50 % duty = 1.15 V under either polarity (reference)
+#   GPU OPP 200 MHz -> 67 % duty = 1.10 V (stock formula) or 1.20 V (inverted)
+# Leakage at ~70 C depends strongly on voltage, so the 200 MHz phases run
+# clearly cooler if the stock formula holds and hotter if it is inverted.
+# Phases alternate 400/200/400/200 to cancel slow ambient drift.
+#   vlogic-ab [seconds-per-phase, default 90; last 20 s are averaged]
+s=${1:-90}
+D=/sys/class/devfreq/20000000.gpu
+Z=/sys/class/thermal/thermal_zone0/temp
+avg() { n=0; sum=0; while [ $n -lt 20 ]; do read -r t < $Z; sum=$((sum + t)); n=$((n + 1)); sleep 1; done; echo $((sum / 20)); }
+echo userspace > $D/governor || exit 1
+for f in 400 200 400 200; do
+    echo "${f}000000" > $D/userspace/set_freq || exit 1
+    sleep $((s - 20))
+    echo "AB gpu=${f}MHz requested_uV=$(cat /sys/class/regulator/*/microvolts | tr '\n' ' ') temp_avg_mC=$(avg)"
+done
+echo simple_ondemand > $D/governor
+echo 'AB rule: 200 MHz phases cooler than 400 MHz => stock formula (more duty = lower V) holds'

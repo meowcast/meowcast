@@ -1,0 +1,13 @@
+#!/bin/sh
+# One-line-per-fact lab state: reset cause, MaskROM flag, CPUs, clocks, temperature.
+echo "LAB_CPUS online=$(cat /sys/devices/system/cpu/online) possible=$(cat /sys/devices/system/cpu/possible)"
+if [ -e /sys/kernel/debug/labreg ]; then
+    echo "LAB_RST_ST $(reg 0x110e0150 | cut -d' ' -f2)"
+    echo "LAB_MASKROM_FLAG $(reg 0x110005c8 | cut -d' ' -f2)"
+fi
+[ -e /dev/watchdog ] && echo "LAB_WDT present daemon=$(pidof watchdog || echo none)"
+for z in /sys/class/thermal/thermal_zone*; do echo "LAB_TEMP $(cat $z/type) $(cat $z/temp)"; done
+echo "LAB_CPUFREQ $(cat /sys/devices/system/cpu/cpufreq/policy0/scaling_cur_freq 2>/dev/null) gov=$(cat /sys/devices/system/cpu/cpufreq/policy0/scaling_governor 2>/dev/null)"
+echo "LAB_GPUFREQ $(cat /sys/class/devfreq/20000000.gpu/cur_freq 2>/dev/null)"
+echo "LAB_UPTIME $(cut -d' ' -f1 /proc/uptime) load=$(cut -d' ' -f1-3 /proc/loadavg)"
+ls /sys/fs/pstore 2>/dev/null | sed 's/^/LAB_PSTORE /'

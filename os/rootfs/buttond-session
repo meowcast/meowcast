@@ -1,0 +1,51 @@
+#!/bin/sh
+# buttond-session start|stop|restart|status: the hardware-button daemon (/usr/bin/meow-buttond,
+# ../buttond.c) under a small respawn loop, started by init. Short press: pairing screen;
+# long hold and let go in the window: factory reset (rootfs/factory-reset). Log: /run/button.log.
+# Development build from /opt: BUTTOND=/opt/meow-buttond buttond-session restart
+# (add BUTTOND_ARGS=-n to log a reset instead of running it).
+BUTTOND=${BUTTOND:-/usr/bin/meow-buttond}
+
+running() {
+    [ -f /run/buttond-session.pid ] && kill -0 "$(cat /run/buttond-session.pid)" 2>/dev/null
+}
+
+case "$1" in
+start)
+    [ -x "$BUTTOND" ] || { echo "BUTTOND_SESSION no $BUTTOND"; exit 1; }
+    running && { echo "BUTTOND_SESSION already running"; exit 0; }
+    rm -f /run/buttond.stop
+    (
+        while [ ! -e /run/buttond.stop ]; do
+            "$BUTTOND" $BUTTOND_ARGS >>/run/button.err 2>&1
+            rc=$?
+            [ -e /run/buttond.stop ] && break
+            echo "BUTTOND_SESSION exit rc=$rc; restarting in 5 s" >>/run/button.log
+            sleep 5
+        done
+    ) </dev/null &
+    echo $! >/run/buttond-session.pid
+    echo "BUTTOND_SESSION started $BUTTOND"
+    ;;
+stop)
+    touch /run/buttond.stop
+    pid=$(pidof "${BUTTOND##*/}")
+    [ -n "$pid" ] && kill $pid
+    sup=$(cat /run/buttond-session.pid 2>/dev/null)
+    [ -n "$sup" ] && kill "$sup" 2>/dev/null
+    rm -f /run/buttond-session.pid
+    echo "BUTTOND_SESSION stopped"
+    ;;
+restart)
+    "$0" stop
+    "$0" start
+    ;;
+status)
+    if running; then echo "BUTTOND_SESSION running pid=$(pidof "${BUTTOND##*/}")"; else echo "BUTTOND_SESSION stopped"; fi
+    tail -n 5 /run/button.log 2>/dev/null
+    ;;
+*)
+    echo "usage: buttond-session start|stop|restart|status"
+    exit 2
+    ;;
+esac

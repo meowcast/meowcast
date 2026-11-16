@@ -1,0 +1,16 @@
+# meow wallpapers (written by prepare-wallpapers.py): the thumbnail sheet's asset,
+# cell width, cell height and cells per row; then one line per wallpaper, in sheet
+# order: asset, title, author, mean colour.
+thumbs	wallpapers/thumbs.jpg	264	148	4
+w	wallpapers/default.jpg	Sub-Arctic	Krystian Zajdel	58467c
+w	wallpapers/altai.jpg	Altai	Alesya Khoteeva	65a3cb
+w	wallpapers/mountain.jpg	Mountain	Andy Betts	434c56
+w	wallpapers/volna.jpg	Volna	Nikita Babin	a09389
+w	wallpapers/nuvole.jpg	Nuvole	Krystian Zajdel	76327f
+w	wallpapers/waterfall.jpg	Waterfall	Krystian Zajdel	62528a
+w	wallpapers/honeywave.jpg	Honeywave	Ken Vermette	594a54
+w	wallpapers/kokkini.jpg	Kokkini	Ken Vermette	4f4361
+w	wallpapers/milkyway.jpg	Milky Way	ruvkr	300f2f
+w	wallpapers/flow.jpg	Flow	Sandra Smukaste	372f22
+w	wallpapers/scarlet-tree.jpg	Scarlet Tree	axo1otl	685d8c
+w	wallpapers/safe-landing.jpg	Safe Landing	Louis Durrant	c39d82

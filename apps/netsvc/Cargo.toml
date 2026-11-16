@@ -1,0 +1,25 @@
+[package]
+name = "meow-net"
+version = "0.1.0"
+description = "meow network service: TLS, certificates, DNS and HTTP for every app, in one sandboxed process"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+# Dependencies (licences, all GPLv3-compatible):
+# - meow-app (path)    GPL-3.0+              broker messages, the channel wire format (net.rs)
+# - libc 0.2           MIT/Apache            poll, socketpair
+# - rustls 0.23        Apache/ISC/MIT        TLS 1.2/1.3; ring backend: NEON AES-GCM/ChaCha20,
+#                                            fast enough for 1080p60 video on the Cortex-A7
+# - webpki-roots 1     CDLA-Permissive-2.0   Mozilla's root CAs: the trust policy of every app,
+#                                            updated by publishing this service to the store
+[dependencies]
+meow-app = { path = "../sdk" }
+libc = "0.2"
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
+webpki-roots = "1"
+
+[[bin]]
+name = "meow-net"
+path = "src/main.rs"

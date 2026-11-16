@@ -1,0 +1,35 @@
+{
+  "name": "miracast-remote",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "MEOW Pilot: phone remote for the dongle. Served by the dongle, by the Mac (USB development), or from Cloudflare Pages (meowcast-pilot) through the relay",
+  "scripts": {
+    "build": "vite build",
+    "start": "node server.mjs",
+    "serve": "vite build && node server.mjs",
+    "dev": "vite",
+    "build:cloud": "VITE_CLOUD=1 vite build --outDir dist-cloud",
+    "deploy:cloud": "sh ../deploy.sh pilot"
+  },
+  "dependencies": {
+    "qrcode-terminal": "0.12.0",
+    "ws": "8.22.0"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "4.3.3",
+    "@types/node": "26.6.5",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "@vitejs/plugin-react": "6.1.2",
+    "class-variance-authority": "0.7.1",
+    "clsx": "2.1.1",
+    "lucide-react": "1.62.0",
+    "react": "19.3.1",
+    "react-dom": "19.3.1",
+    "tailwind-merge": "3.7.0",
+    "tailwindcss": "4.3.3",
+    "typescript": "7.0.2",
+    "vite": "8.3.5"
+  }
+}

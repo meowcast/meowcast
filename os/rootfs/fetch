@@ -1,0 +1,11 @@
+#!/bin/sh
+# fetch NAME [DEST]: download NAME from the Mac's dev HTTP server
+# (python3 serve.py on the Mac, port 8000 on the bridge address) into /opt.
+[ -n "$1" ] || { echo "usage: fetch NAME [DEST]"; exit 2; }
+. /run/net.env 2>/dev/null
+host=${DEV_HOST:-$GATEWAY}
+[ -n "$host" ] || { echo "fetch: no network (see net-status)"; exit 1; }
+dest=${2:-/opt/${1##*/}}
+wget -q -T 20 -O "$dest.part" "http://$host:${DEV_PORT:-8000}/$1" && mv "$dest.part" "$dest" || { rm -f "$dest.part"; echo "FETCH_FAIL $1"; exit 1; }
+case "$dest" in *.sh|*/bin/*) chmod 755 "$dest";; esac
+echo "FETCH_OK $dest $(wc -c < "$dest") $(sha256sum "$dest" | cut -d' ' -f1)"

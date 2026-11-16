@@ -1,0 +1,21 @@
+#!/bin/sh
+# Hold 3840x2160@60 (light 5 fps render) and record source + sink link state,
+# optionally for several PHY trim sets: hdmi4k60-diag ["TA PRE CLKD2 D1D0" ...]
+# Each set is applied, given 5 s for the TV to re-lock, then SCDC is read.
+H=/sys/kernel/debug/regmap/200a0000.hdmi/registers
+n=$(( 14 + 7 * $# ))
+gpu-test --mode 3840x2160@60 --seconds $n --fps 5 > /tmp/4k60.log 2>&1 &
+sleep 7
+grep -E 'MODE_SELECTED|KMS_|FAIL' /tmp/4k60.log
+echo "SOURCE scrambler(4384)/phy_stat0(c010): $(grep -E '^0*(4384|c010):' $H | tr '\n' ' ')"
+hdmi-phy
+scdc-status
+for set in "$@"; do
+    echo "=== PHY $set"
+    hdmi-phy $set > /dev/null || exit 1
+    sleep 5
+    hdmi-phy
+    scdc-status
+done
+wait
+grep -E 'RENDER_RESULT|RESTORE' /tmp/4k60.log

@@ -1,0 +1,15 @@
+{
+  "id": "dev.meow.net",
+  "name": "Network service",
+  "summary": "TLS, certificates and HTTP for apps",
+  "version": "0.1.0",
+  "version_code": 1,
+  "exec": "bin/meow-net",
+  "publisher": "meow",
+  "service": "net",
+  "permissions": [
+    { "name": "network", "reason": "Connects to the internet on behalf of apps" }
+  ],
+  "resources": { "memory_mb": 24, "tmp_mb": 1, "pids": 64, "cpu_weight": 200 },
+  "appearance": { "glyph": "globe", "tint": "#14202a", "badge": ["#52b6ff", "#2760d5"], "shape": "circle" }
+}
